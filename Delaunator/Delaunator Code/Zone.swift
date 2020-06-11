@@ -75,7 +75,7 @@ struct Zone: Hashable, Codable, Identifiable {
   var hull: Array<Int>?
   var scale:Double? = 1
   
-  init(name:String, triangulation: Triangulation, bounds box:Box) {
+  init(name:String, triangulation: Triangulation, bounds box:Box?) {
     self.name = name
     self.triangulation = triangulation
     self.box = box
@@ -148,6 +148,7 @@ func readZones(using storedData:StoredZones) -> [Zone] {
   do {
     for (_, z) in inputZones.enumerated() {
       var list = [Point]()
+      var box: Box?
       var phrase:String = z.name
       let perimeter:Array = z.points ?? [[Double]]()
       let name:String = z.name
@@ -193,11 +194,13 @@ func readZones(using storedData:StoredZones) -> [Zone] {
       }
       
       // Bounding box
-      let box = Box(origin:Point(x:minX, y:minY), size:Point(width: maxX - minX, height: maxY - minY))
+      if perimeter.count > 0 {
+        box = Box(origin:Point(x:minX, y:minY), size:Point(width: maxX - minX, height: maxY - minY))
+      }
       
       // This is the triangulation step
-      var delaunay = Delaunator_Swift(from: list)
-      delaunay.triangulate()
+      let delaunay = Delaunator_Swift(from: list)
+      //delaunay.triangulate()
       
       // Print half edges & triangles for comparison
       if let testFun = testIt {

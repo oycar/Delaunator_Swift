@@ -91,6 +91,7 @@ struct Delaunator_Swift {
     
     // Update n
     n = coords.count >> 1
+    if 0 == n {return}
     
     // arrays that will store the triangulation graph
     maxTriangles = max(2 * n - 5, 0)
@@ -110,33 +111,12 @@ struct Delaunator_Swift {
     hullStart = 0
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
-  }
-
-  // Make room for arrays
-  mutating func increaseSize(extra number:Int) {
-    if number > 0 {
-      maxTriangles += 2 * number
-      triangles.append(contentsOf: Array(repeating: 0, count: 6 * number))
-      halfEdges.append(contentsOf: Array(repeating: 0, count: 6 * number))
-      
-      hullTri.append(contentsOf: Array(repeating: 0, count: 2 * number))
-      hullPrev.append(contentsOf: Array(repeating: 0, count: 2 * number))
-      hashSize = Int(Double(n + 2 * number).squareRoot().rounded(.up))
-    }
-  }
-  
-  mutating func triangulate(extra:Int? = nil) {
-    increaseSize(extra: extra ?? 0)
     
-    // temporary arrays for tracking the edges of the advancing convex hull
-    let size = n + 2 * (extra ?? 0)
-    if 0 == size {return}
-    
-    var hullNext = Array(repeating:0, count:size) // edge to next edge
+    var hullNext = Array(repeating:0, count:n) // edge to next edge
     var hullHash = Array(repeating:-1, count:hashSize) // angular edge hash
     
-    var dists = Array(repeating:0.0, count:size)
-    var ids   = Array(repeating:0, count:size)
+    var dists = Array(repeating:0.0, count:n)
+    var ids   = Array(repeating:0, count:n)
     
     // populate an array of point indices; calculate input data bbox
     var minX =  Double.infinity
