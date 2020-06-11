@@ -45,10 +45,10 @@ struct ZoneDetail: View {
           Divider()
           
           TabView {
-            ShowEdges(triangulation: self.zone.triangulation ?? Triangulation())
+            ShowEdges(zone: self.zone)
               .tabItem({ Text("Delaunay Edges") })
               .tag(0)
-            ShowVoronoi(triangulation: self.zone.triangulation ?? Triangulation())
+            ShowVoronoi(zone: self.zone)
               .tabItem({ Text("Voronoi Mesh") })
               .tag(1)
             Text(getJSON(using: zone)!)

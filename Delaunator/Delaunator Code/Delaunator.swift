@@ -1,6 +1,6 @@
 //
 //  triangulator.swift
-//  Flame2
+//  Delaunator_Swift
 //
 //  Created by Z Chameleon on 4/5/20.
 //  Copyright © 2020 Z Cha. All rights reserved.
@@ -25,6 +25,13 @@ var errorStream = StandardErrorOutputStream()
 // Start with some global constants
 var EDGE_STACK  = Array(repeating:0, count:512)
 
+
+// Define a simple point struct
+struct Point: Hashable, Codable {
+  var x, y: Double
+}
+
+
 // For recording
 struct Triangulation: Hashable, Codable, Identifiable {
 
@@ -32,8 +39,6 @@ struct Triangulation: Hashable, Codable, Identifiable {
   var triangles: Array<Int>
   var halfEdges: Array<Int>
   var hull: Array<Int>
-  var box:Box
-  
   var numberEdges: Int
   
   // Extras for display code
@@ -42,11 +47,9 @@ struct Triangulation: Hashable, Codable, Identifiable {
   
   // Provided init
   init(using delaunay:Delaunator_Swift, with points:Array<Point>) {
-    // triangles   = delaunay.triangles.map({Index(id:$0)})
     triangles   = delaunay.triangles
     halfEdges   = delaunay.halfEdges //.map({Index(id:$0)})
     hull        = delaunay.hull //.map({Index(id:$0)})
-    box         = delaunay.box
     numberEdges = delaunay.numberEdges
     self.points = points
   }
@@ -58,7 +61,6 @@ struct Triangulation: Hashable, Codable, Identifiable {
     hull = [Int]()
     points = [Point]()
     numberEdges = 0
-    box =  Box(origin:Point(x: 0, y:0), size:Point(width:1, height:1))
   }
 }
 
@@ -67,7 +69,6 @@ struct Delaunator_Swift {
   var triangles: Array<Int>
   var halfEdges: Array<Int>
   var hull: Array<Int>
-  var box:Box
   
   var numberEdges: Int
   fileprivate var n, maxTriangles,  hashSize, hullStart, hullSize: Int
@@ -109,7 +110,6 @@ struct Delaunator_Swift {
     hullStart = 0
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
-    box = Box(origin: Point(x:0.0, y:0.0), size: Point(x:0.0, y:0.0))
   }
 
   // Make room for arrays
@@ -157,10 +157,7 @@ struct Delaunator_Swift {
     
     // Centre
     let c = Point(x: 0.5 * (minX + maxX), y: 0.5 * (minY + maxY))
-    
-    // Bounding box
-    box = Box(origin:Point(x:minX, y:minY), size:Point(width: maxX - minX, height: maxY - minY))
-    
+        
     var minDist = Double.infinity
     var i0 = 0, i1 = 0, i2 = 0
     
@@ -834,4 +831,22 @@ func circumCentre(first a:Point, second b:Point, third c:Point) -> Point {
   let D = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
   return Point(x: 1.0 / D * (ad * (b.y - c.y) + bd * (c.y - a.y) + cd * (a.y - b.y)),
                y: 1.0 / D * (ad * (c.x - b.x) + bd * (a.x - c.x) + cd * (b.x - a.x)))
+}
+
+
+/* Some Simple helper functions */
+func nextHalfEdge(edge e:Int) -> Int { (e % 3 == 2) ? e - 2 : e + 1 }
+func prevHalfEdge(edge e:Int) -> Int { (e % 3 == 0) ? e + 2 : e - 1 }
+
+
+/* Triangle functions */
+func edgesOf(triangle t: Int) -> Array<Int> { [3 * t, 3 * t + 1, 3 * t + 2] }
+func triangleOf(edge e: Int) -> Int { (e / 3) } // e is an integer
+func pointsOf(triangle t:Int, using triangles:Array<Int>) -> Array<Int> {edgesOf(triangle: t).map {triangles[$0]}}
+
+func triangleCentre(triangle t:Int, using points:Array<Point>, using triangles:Array<Int>) -> Point  {
+  let vertices:Array<Point> = pointsOf(triangle: t, using: triangles).map({points[$0]})
+  return circumCentre(first:  vertices[0],
+                      second: vertices[1],
+                      third:  vertices[2])
 }

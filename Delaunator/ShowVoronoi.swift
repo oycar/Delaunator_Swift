@@ -1,6 +1,6 @@
 //
 //  ShowVoronoi.swift
-//  showMe
+//  Delaunator
 //
 //  Created by Z Chameleon on 29/5/20.
 //  Copyright © 2020 Z Cha. All rights reserved.
@@ -10,8 +10,8 @@ import SwiftUI
 
 struct ShowVoronoi: View {
   @EnvironmentObject var userData: UserData
-  var triangulation: Triangulation
-  
+  var zone: Zone
+
   // This draws the triangulation
   var body: some View {
     ZStack {
@@ -21,20 +21,21 @@ struct ShowVoronoi: View {
           .stroke(Color.gray)
         
         Path { path in
-          let box = self.triangulation.box
+          let triangulation = self.zone.triangulation ?? Triangulation()
+          let box = self.zone.box ?? Box()
           
           // Need scaling factors
           let scale: CGFloat = min(geometry.size.width, geometry.size.height) / CGFloat(box.scale)
           
-          for (e, _) in self.triangulation.triangles.enumerated() {
+          for (e, _) in triangulation.triangles.enumerated() {
             
-            if (e < self.triangulation.halfEdges[e]) {
+            if (e < triangulation.halfEdges[e]) {
               let p = triangleCentre(triangle: triangleOf(edge: e),
-                                     using: self.triangulation.points,
-                                     using: self.triangulation.triangles)
-              let q = triangleCentre(triangle: triangleOf(edge: self.triangulation.halfEdges[e]),
-                                     using: self.triangulation.points,
-                                     using: self.triangulation.triangles)
+                                     using: triangulation.points,
+                                     using: triangulation.triangles)
+              let q = triangleCentre(triangle: triangleOf(edge: triangulation.halfEdges[e]),
+                                     using: triangulation.points,
+                                     using: triangulation.triangles)
               
               // Get x & y in point space
               let px = CGFloat(p.x - box.left)
@@ -58,7 +59,7 @@ struct ShowVoronoi: View {
   
   struct ShowVoronoi_Previews: PreviewProvider {
     static var previews: some View {
-      ShowVoronoi(triangulation: triangulationData[0])
+      ShowVoronoi(zone: zoneData[0])
         .environmentObject(UserData())  //Text("ZoneShow")
     }
   }

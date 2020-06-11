@@ -1,19 +1,14 @@
 //
 //  Zone.swift
-//  showMe
+//  Delaunator_Swift
 //
 //  Created by Z Chameleon on 26/5/20.
 //  Copyright © 2020 Z Cha. All rights reserved.
 //
+import Foundation
 
-import SwiftUI
 
-// Define a simple point struct
-struct Point: Hashable, Codable {
-  var x, y: Double
-}
-
-// Make point operate as a vector
+// Some extra methods for point
 extension Point {
   var width: Double {
     get {self.x}
@@ -69,6 +64,7 @@ struct Zone: Hashable, Codable, Identifiable {
   var points: Array<Array<Double>>? = [[Double]]()
     
   // Extras for display code
+  var box:Box?
   var id:UUID? = UUID()
   var isSelected: Bool = false
   
@@ -79,9 +75,10 @@ struct Zone: Hashable, Codable, Identifiable {
   var hull: Array<Int>?
   var scale:Double? = 1
   
-  init(name:String, triangulation: Triangulation) {
+  init(name:String, triangulation: Triangulation, bounds box:Box) {
     self.name = name
     self.triangulation = triangulation
+    self.box = box
   }
 }
 
@@ -93,6 +90,7 @@ struct StoredZones : Codable {
     var name: String
     var points: Array<Array<Double>>?
     
+    // A triangulation could be read in too
     var triangulation: Triangulation?
     
     // The header
@@ -123,18 +121,101 @@ extension Zone {
     scale = stored.header?.scale
     tolerance = stored.header?.tolerance
   }
+}
 
+
+
+
+// Process each zone
+//
+func readZones(using storedData:StoredZones) -> [Zone] {
+  var testIt: ((String, Array<Point>, Delaunator_Swift?, Array<Int>?) -> Bool)? = nil
+  var outputZones:[Zone] = [Zone]()
   
-  var image: Image {
-    ImageStore.shared.image(name: name)
+  // Get each zone - process one at a time
+  var inputZones = [Zone]()
+  for (_, z) in storedData.zones.enumerated() {
+    inputZones.append(Zone(from: z))
   }
-}
-
-struct Zone_Previews: PreviewProvider {
-  static var previews: some View {
-    Text("Hello, Zone World!")
+  
+  // Output JSON
+  let encoder = JSONEncoder()
+  encoder.outputFormatting = .prettyPrinted
+  
+  let X = 0
+  let Y = 1
+  //let C = 2
+  do {
+    for (_, z) in inputZones.enumerated() {
+      var list = [Point]()
+      var phrase:String = z.name
+      let perimeter:Array = z.points ?? [[Double]]()
+      let name:String = z.name
+      let scale:Double = z.scale ?? 1.0
+      let expectedHull:Array = z.hull ?? [Int]()
+      
+      // Control which test (if any) is run
+      // uses the header "action" tag
+      switch z.action {
+        case "testValid":
+          testIt = validateTriangulation
+          phrase = name + " Produces correct triangulation"
+        case "testEquals":
+          testIt = testEqual
+          phrase = name + " Produces expected triangulation"
+        default:
+          testIt = logTriangulation
+      }
+      
+      // Tolerance
+      Static.Tolerance = z.tolerance ?? Static.Tolerance
+      
+      // populate an array of point indices; calculate input data bbox
+      var minX =  Double.infinity
+      var maxX = -Double.infinity
+      var minY =  Double.infinity
+      var maxY = -Double.infinity
+      
+      // Setup the list of points
+      for (_, point) in perimeter.enumerated() {
+        let p = Point(x:scale * point[X],
+                      y:scale * point[Y])
+        
+        // Condition is not used ATM
+        //condition = point[C]
+        list.append(p)
+        
+        // Compute bounds
+        if (p.x < minX)  {minX = p.x}
+        if (p.y < minY)  {minY = p.y}
+        if (p.x > maxX)  {maxX = p.x}
+        if (p.y > maxY)  {maxY = p.y}
+      }
+      
+      // Bounding box
+      let box = Box(origin:Point(x:minX, y:minY), size:Point(width: maxX - minX, height: maxY - minY))
+      
+      // This is the triangulation step
+      var delaunay = Delaunator_Swift(from: list)
+      delaunay.triangulate()
+      
+      // Print half edges & triangles for comparison
+      if let testFun = testIt {
+        let _ = testFun(phrase, list, delaunay, expectedHull)
+      }
+      
+      // Build up output list of zones
+      outputZones.append(Zone(name: name, triangulation: Triangulation(using:delaunay, with:list), bounds: box))
+    }
+    
+    let data = try encoder.encode(outputZones)
+    print(String(data: data, encoding: .utf8)!)
+    
+  } catch {
+    // Simplest possible error catching
+    fatalError("Caught \(error)")
   }
+  
+  return outputZones
 }
-
-
 
