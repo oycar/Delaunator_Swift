@@ -30,6 +30,9 @@
 		4502AA432490AF5300DE0674 /* defaultDelaunay.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA3E2490AF5200DE0674 /* defaultDelaunay.jpg */; };
 		4502AA442490AF5300DE0674 /* issue11.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA3F2490AF5300DE0674 /* issue11.jpg */; };
 		4502AA452490AF5300DE0674 /* issue24.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA402490AF5300DE0674 /* issue24.jpg */; };
+		4502AA492492180700DE0674 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA462492180700DE0674 /* LICENSE */; };
+		4502AA4A2492180700DE0674 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA472492180700DE0674 /* README.md */; };
+		4502AA4B2492180700DE0674 /* Images in Resources */ = {isa = PBXBuildFile; fileRef = 4502AA482492180700DE0674 /* Images */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +62,9 @@
 		4502AA3E2490AF5200DE0674 /* defaultDelaunay.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = defaultDelaunay.jpg; sourceTree = "<group>"; };
 		4502AA3F2490AF5300DE0674 /* issue11.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = issue11.jpg; sourceTree = "<group>"; };
 		4502AA402490AF5300DE0674 /* issue24.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = issue24.jpg; sourceTree = "<group>"; };
+		4502AA462492180700DE0674 /* LICENSE */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
+		4502AA472492180700DE0674 /* README.md */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
+		4502AA482492180700DE0674 /* Images */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = Images; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +83,10 @@
 			children = (
 				4502A9F62490A83800DE0674 /* Delaunator */,
 				4502A9F52490A83800DE0674 /* Products */,
+				4502AA482492180700DE0674 /* Images */,
+				4502AA462492180700DE0674 /* LICENSE */,
+				4502AA472492180700DE0674 /* README.md */,
+				4502AA0F2490A8F100DE0674 /* Zone.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -124,7 +134,6 @@
 			isa = PBXGroup;
 			children = (
 				4502AA0E2490A8F100DE0674 /* Delaunator.swift */,
-				4502AA0F2490A8F100DE0674 /* Zone.swift */,
 			);
 			path = "Delaunator Code";
 			sourceTree = "<group>";
@@ -204,10 +213,13 @@
 			files = (
 				4502AA042490A83A00DE0674 /* LaunchScreen.storyboard in Resources */,
 				4502AA2F2490A95900DE0674 /* triangleData.json in Resources */,
+				4502AA4B2492180700DE0674 /* Images in Resources */,
 				4502AA422490AF5300DE0674 /* issue43.jpg in Resources */,
 				4502AA2E2490A95900DE0674 /* zoneData.json in Resources */,
+				4502AA4A2492180700DE0674 /* README.md in Resources */,
 				4502AA412490AF5300DE0674 /* issue13.jpg in Resources */,
 				4502AA012490A83A00DE0674 /* Preview Assets.xcassets in Resources */,
+				4502AA492492180700DE0674 /* LICENSE in Resources */,
 				4502AA452490AF5300DE0674 /* issue24.jpg in Resources */,
 				4502AA432490AF5300DE0674 /* defaultDelaunay.jpg in Resources */,
 				4502AA2C2490A95900DE0674 /* ukraine.jpg in Resources */,

@@ -1,8 +1,7 @@
 # Delaunator_Swift
-A port of the Delaunator javascript library of mapbox to the Swift programming language.
+A port of the [Delaunator](https://github.com/mapbox/delaunator) javascript library of [mapbox](https://github.com/mapbox) to the Swift programming language,
 
 This library produces Delaunay triangulations (or the dual Voronoi Mesh) for a set of points defined in an input JSON file; included is a bare bones SwiftUI renderer which will show these structures.
-
 
 ![Example Delaunay Triangulation](./Images/Ukraine_Delaunay.png)
 
@@ -13,159 +12,102 @@ will be well behaved.
 
 ![Example Delaunay Triangulation](./Images/Ukraine_Voronoi.png)
 
-# Example
+## Example
 
-The bare minimum usage example would be (just open Delaunator_Sw)
-```
-// Delaunator_Swift always uses point coordinates of type <Double>
+The bare minimum usage example would be
+```swift
+// Delaunator_Swift always uses coordinates of type => struct Point: Hashable, Codable { var x, y: Double }
 let list = [Point(x:0.0, y:0.0), Point(x:1.0, y:0.0), Point(x:1.0, y:1.0), Point(x:0.0, y:1.0)] // [{x 0, y 0}, {x 1, y 0}, {x 1, y 1}, {x 0, y 1}]
 
 // Calculate the triangulation
 var delaunay = Delaunator_Swift(from: list)
-delaunay.triangulate()
 
 // The output
 print(delaunay.triangles) // [0, 2, 1, 0, 3, 2]\n"
 print(delaunay.halfEdges) // "[5, -1, -1, -1, -1, 0]\n"
 print(delaunay.hull)      // "[0, 3, 2, 1]\n"
 ```
-```
 
-// Delaunator_Swift always uses point coordinates of type <Double>
-let points:Array<Double> = [[168, 180], [168, 178], [168, 179], [168, 181], [168, 183], ...]
+## Install
 
-// Calculate the triangulation
-var delaunay = Delaunator_Swift(from: points)
+If you have Swift5.2 you just need the `Delaunator.swift` file for basic
+usage. You can simply open it in a playground.
 
-// Print the triangulation
-print(delaunay.triangles)
-// [623, 636, 619,  636, 444, 619, ...]]]
-```
-
-# Install
-
-If you have Swift5.2 you just need the ```Delaunator.swift``` file for basic
-usage.
-
-# Extras
+## Extras
 
 Most of the files are for efficient input, output and a very simple rendering app
 for SwiftUI. Data can be input using JSON formatted files; if you want to do this
-but don't need the renderer you will need the ```Zone.swift``` file too.
+but don't need the renderer you will need the `Zone.swift` file too.
 
+Each zone has a name, and to do anything useful with it a provided list of points.
+The example above using JSON would be - the data is decoded as a `StoredZones`
+struct. Again you can try this out in a playground.
 
-
-Apart from defining the points to be triangulated programatically data can be
-provided using a JSON data structure; which is parsed using this structure
-
-```
-// We want to write out a JSON data file
-struct StoredZones : Codable {
-  let zones: [Zone]
-
-  struct Zone: Codable {
-    var name: String
-    var points: Array<Array<Double>>?
-
-    // The header
-    var header: Header?
-  }
-
-  struct Header: Hashable, Codable {
-    // Extra stuff
-    var action:String?
-    var tolerance:Double = Static.Tolerance
-    var comment:String?
-    var hull: Array<Int>?
-    var scale:Double?
-  }
-}
-```
-
-Thus a JSON input file might look like - with one or more zones being defined
-each with a distinct point set for triangulation.
-
-```
+```swift
+let jsonData = """
 {
-  "zones": [
-    {
-      "name": "issue13",
-      "points": [
-        [
-          4,
-          1
-        ],
-        [
-          3.7974166882130675,
-          2.0837249985614585
-        ],
-        [
-          3.2170267516619773,
-          3.0210869309396715
-        ],
-        [
-          2.337215067329615,
-          3.685489874065187
-        ],
-        [
-          1.276805078389906,
-          3.9872025288851036
-        ],
-        [
-          0.17901102978375127,
-          3.885476929518457
-        ],
-        [
-          -0.8079039091377689,
-          3.3940516818407187
-        ],
-        [
-          -1.550651407188842,
-          2.5792964886320684
-        ],
-        [
-          -1.9489192990517052,
-          1.5512485534497125
-        ],
-        [
-          -1.9489192990517057,
-          0.44875144655029087
-        ],
-        [
-          -1.5506514071888438,
-          -0.5792964886320653
-        ],
-        [
-          -0.8079039091377715,
-          -1.394051681840717
-        ],
-        [
-          0.17901102978374794,
-          -1.8854769295184561
-        ],
-        [
-          1.276805078389902,
-          -1.987202528885104
-        ],
-        [
-          2.337215067329611,
-          -1.6854898740651891
-        ],
-        [
-          3.217026751661974,
-          -1.021086930939675
-        ],
-        [
-          3.7974166882130653,
-          -0.08372499856146409
-        ]
-      ]
-    }
-  ]
+"zones": [
+{
+"name": "square",
+"points": [[0, 0], [1, 0], [1, 1], [0, 1]]
 }
+]
+}
+""".data(using: .utf8)!
+
+do {
+  let stored:StoredZones = try JSONDecoder().decode(StoredZones.self, from:jsonData)
+  print(stored)
+
+  // Creating a zone from the stored zone
+  let zone:Zone = Zone(from: stored.zones[0])
+
+  // Create the point list
+  var points = [Point]()
+  let list   = zone.points ?? [[Double]]()
+  for (_, p) in list.enumerated() {
+    points.append(Point(x:p[0], y:p[1]))
+  }
+
+  // This is the triangulation step
+  var delaunay = Delaunator_Swift(from: points)
+
+  // The output
+  print(delaunay.triangles) // [0, 2, 1, 0, 3, 2]\n"
+  print(delaunay.halfEdges) // "[5, -1, -1, -1, -1, 0]\n"
+  print(delaunay.hull)      // "[0, 3, 2, 1]\n"
+
+}
+catch { () }
+
 ```
 
+## API Reference
+
+#### Delaunator_Swift(from: [Point])
+
+Constructs a delaunay triangulation object given an array of points `Point(x:Double, y:Double)`
 
 
-Work Flo
-Yaml -> JSON input
+#### delaunay.triangles
+
+An array `[Int]` of triangle vertex indices (each group of three numbers forms a triangle).
+All triangles are directed anticlockwise.
+
+#### delaunay.halfedges
+
+An array `[Int]` of triangle half-edge indices that allows you to traverse the triangulation.
+`i`-th half-edge in the array corresponds to vertex `triangles[i]` the half-edge is coming from.
+`halfedges[i]` is the index of a twin half-edge in an adjacent triangle
+(or `-1` for outer half-edges on the convex hull).
+
+The flat array-based data structures might be counterintuitive,
+but they're one of the key reasons this library is fast.
+
+#### delaunay.hull
+
+An `[Int]` array of indices that reference points on the convex hull of the input data, counter-clockwise.
+
+## More details
+
+Comprehensive details on the data structures used are available via [mapbox](https://mapbox.github.io/delaunator/)
