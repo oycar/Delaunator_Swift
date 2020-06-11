@@ -5,7 +5,7 @@ This library produces Delaunay triangulations (or the dual Voronoi Mesh) for a s
 
 ![Example Delaunay Triangulation](./Images/Ukraine_Delaunay.png)
 
-When a triangulation includes near degenrate triangles, i.e. almost collinear, the
+When a triangulation includes near degenerate triangles, i.e. almost collinear, the
 points which define the Voronoi diverge will diverge to infinity; making rendering the
 Voronoi mesh numerically unstable. But for less extreme triangulations the Voronoi Mesh
 will be well behaved.
