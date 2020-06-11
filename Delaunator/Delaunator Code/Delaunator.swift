@@ -91,7 +91,6 @@ struct Delaunator_Swift {
     
     // Update n
     n = coords.count >> 1
-    if 0 == n {return}
     
     // arrays that will store the triangulation graph
     maxTriangles = max(2 * n - 5, 0)
@@ -112,6 +111,9 @@ struct Delaunator_Swift {
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
     
+    // Back door
+    if 0 == n {return}
+
     var hullNext = Array(repeating:0, count:n) // edge to next edge
     var hullHash = Array(repeating:-1, count:hashSize) // angular edge hash
     
