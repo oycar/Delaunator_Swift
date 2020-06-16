@@ -10,7 +10,7 @@ import Foundation
 // Define statics
 struct Static {
   static var Epsilon:Double = pow(2.0, -51)
-  static var Tolerance:Double = 1.0e-6 // Arbitrary number
+  static var Tolerance:Double = 1.0e-12 // Arbitrary number
   static let Threshold:Double = 3.3306690738754716e-16
 }
 
