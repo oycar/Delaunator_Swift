@@ -1,11 +1,13 @@
 # Delaunator_Swift
+
+Compute Delaunay Triangulations and Voronoi Meshes in 2D using Swift.
 A port of the [Delaunator](https://github.com/mapbox/delaunator) javascript library of [mapbox](https://github.com/mapbox) to the Swift programming language,
 
 This library produces Delaunay triangulations (or the dual Voronoi Mesh) for a set of points defined in an input JSON file; included is a bare bones SwiftUI renderer which will show these structures.
 
 ![Example Delaunay Triangulation](./Images/Ukraine_Delaunay.png)
 
-When a triangulation includes near degenrate triangles, i.e. almost collinear, the
+When a triangulation includes near degenerate triangles, i.e. almost collinear, the
 points which define the Voronoi diverge will diverge to infinity; making rendering the
 Voronoi mesh numerically unstable. But for less extreme triangulations the Voronoi Mesh
 will be well behaved.
