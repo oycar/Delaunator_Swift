@@ -718,7 +718,6 @@ func partitionLomuto<T: Comparable>(_ index: inout [Int], _ a: [T], low: Int, hi
   var i = low
   for j in low..<high {
     if a[index[j]] <= pivot {
-      // (a[i], a[j]) = (a[j], a[i])
       (index[i], index[j]) = (index[j], index[i])
       
       i += 1
@@ -728,16 +727,9 @@ func partitionLomuto<T: Comparable>(_ index: inout [Int], _ a: [T], low: Int, hi
   // Swap the pivot element with the first element that is greater than
   // the pivot. Now the pivot sits between the <= and > regions and the
   // array is properly partitioned.
-  // (a[i], a[high]) = (a[high], a[i])
   (index[i], index[high]) = (index[high], index[i])
   
   return i
-}
-
-/* Returns a random integer in the range min...max, inclusive. */
-public func random(min: Int, max: Int) -> Int {
-  assert(min < max)
-  return min + Int(arc4random_uniform(UInt32(max - min + 1)))
 }
 
 /*
@@ -747,11 +739,10 @@ public func random(min: Int, max: Int) -> Int {
 func quicksortRandom<T: Comparable>(_ index: inout [Int], using a: [T], low: Int, high: Int) {
   if low < high {
     // Create a random pivot index in the range [low...high].
-    let pivotIndex = random(min: low, max: high)
+    let pivotIndex = Int.random(in:low...high)
+
     
     // Because the Lomuto scheme expects a[high] to be the pivot entry, swap
-    // a[pivotIndex] with a[high] to put the pivot element at the end.
-    //(a[pivotIndex], a[high]) = (a[high], a[pivotIndex])
     (index[pivotIndex], index[high]) = (index[high], index[pivotIndex])
     
     let p = partitionLomuto(&index, a, low: low, high: high)
@@ -810,9 +801,9 @@ func circumCentre(first a:Point, second b:Point, third c:Point) -> Point {
   let ad = a.x * a.x + a.y * a.y
   let bd = b.x * b.x + b.y * b.y
   let cd = c.x * c.x + c.y * c.y
-  let D = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y))
-  return Point(x: 1.0 / D * (ad * (b.y - c.y) + bd * (c.y - a.y) + cd * (a.y - b.y)),
-               y: 1.0 / D * (ad * (c.x - b.x) + bd * (a.x - c.x) + cd * (b.x - a.x)))
+  let D = a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)
+  return Point(x: 0.5 / D * (ad * (b.y - c.y) + bd * (c.y - a.y) + cd * (a.y - b.y)),
+               y: 0.5 / D * (ad * (c.x - b.x) + bd * (a.x - c.x) + cd * (b.x - a.x)))
 }
 
 

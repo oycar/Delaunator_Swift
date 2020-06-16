@@ -100,7 +100,7 @@ struct StoredZones : Codable {
   struct Header: Hashable, Codable {
     // Extra stuff
     var action:String?
-    var tolerance:Double = Static.Tolerance
+    var tolerance:Double? = Static.Tolerance
     var comment:String?
     var hull: Array<Int>?
     var scale:Double?
@@ -122,8 +122,6 @@ extension Zone {
     tolerance = stored.header?.tolerance
   }
 }
-
-
 
 
 // Process each zone
@@ -200,7 +198,6 @@ func readZones(using storedData:StoredZones) -> [Zone] {
       
       // This is the triangulation step
       let delaunay = Delaunator_Swift(from: list)
-      //delaunay.triangulate()
       
       // Print half edges & triangles for comparison
       if let testFun = testIt {
