@@ -102,10 +102,6 @@ struct Delaunator_Swift {
     hullPrev = Array(repeating:0, count:n) // edge to prev edge
     hull     = Array(repeating:0, count:n)
     
-    hullTri  = Array(repeating:0, count:n) // edge to adjacent triangle
-    hullPrev = Array(repeating:0, count:n) // edge to prev edge
-    hull     = Array(repeating:0, count:n)
-    
     hashSize = Int(Double(n).squareRoot().rounded(.up))
     hullStart = 0
     hullSize = 0
@@ -218,16 +214,10 @@ struct Delaunator_Swift {
     // swap the order of the seed points for counter-clockwise orientation
     // These needs a lot of checking
     if (orient(rx: i0x, ry:i0y, qx: i1x, qy: i1y, px: i2x, py: i2y)) {
-      let i = i1
-      let x = i1x
-      let y = i1y
-      
-      i1 = i2
-      i1x = i2x
-      i1y = i2y
-      i2 = i
-      i2x = x
-      i2y = y
+      // Swap i1 & i2
+      (i1, i2) = (i2, i1)
+      (i1x, i2x) = (i2x, i1x)
+      (i1y, i2y) = (i2y, i1y)
     }
     
     // Get the circumcentre of this triangle
@@ -385,15 +375,19 @@ struct Delaunator_Swift {
        *          \||/                  \  /
        *           pr                    pr
        */
-      let a0 = a - a % 3
-      ar = a0 + (a + 2) % 3
-      
-      if (b == -1) { // convex hull edge
+
+      // First case is if (a <-> b) is an edge on the convex hull
+      // In this case no flip can occur
+      if (b == -1) {
         if (i == 0) {break}
         i -= 1
         a = EDGE_STACK[i]
         continue
       }
+      
+      // Define neighbouring edges in both triangles
+      let a0 = a - a % 3
+      ar = a0 + (a + 2) % 3
       
       let b0 = b - b % 3
       let al = a0 + (a + 1) % 3
@@ -432,11 +426,11 @@ struct Delaunator_Swift {
         link(b, halfEdges[ar])
         link(ar, bl)
         
-        let br = b0 + (b + 1) % 3
+        //let br = b0 + (b + 1) % 3
         
         // don't worry about hitting the cap: it can only happen on extremely degenerate input
         if (i < EDGE_STACK.count) {
-          EDGE_STACK[i] = br
+          EDGE_STACK[i] = b0 + (b + 1) % 3 // br
           i += 1
         }
       } else {
