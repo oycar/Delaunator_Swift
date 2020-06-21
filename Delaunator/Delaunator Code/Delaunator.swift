@@ -9,7 +9,7 @@ import Foundation
 
 // Define statics
 struct Static {
-  static var Epsilon:Double = pow(2.0, -51)
+  static var Epsilon:Double = pow(2.0, -52)
   static var Tolerance:Double = 1.0e-12 // Arbitrary number
   static let Threshold:Double = 3.3306690738754716e-16
 }
@@ -64,6 +64,30 @@ struct Triangulation: Hashable, Codable, Identifiable {
   }
 }
 
+/*:
+ ## Delaunator algorithm
+ 
+ The  triangulation is based on the [Sweep Circle](http://cglab.ca/~biniaz/papers/Sweep%20Circle.pdf) algorithm of
+ Biniaz & Dastghaibyfard (2011).
+ 
+ The idea is for points to be included in the triangulation as they enter an expanding circle centred somewhere on the plane.
+ ![Sweep Circle Example](./Documentation/Sweep Circle Algorithm.png)
+ 
+ The new triangle is made locally delaunay - through edge flippping, and then once this is done
+ the advancing front of the conex hull must be updated. This can be done by searching both
+ anti-clockwise and clockwise from the new point, adding extra edges as needed. To facilitate this
+ a list of points is maintained sorted by angle from an initial point inside  the convex hull.
+ 
+ This initial seed point need not be the same as the radial origin, but can be if the radial point is
+ within the convex hull. To [ensure this](https://cs.stackexchange.com/questions/63362/delaunay-sweep-circle-initialization)
+ a good seed point is one is to take a point from the set, its nearest neighbour, and a 3rd point that creates the smallest circumcircle with them will always work
+ as this is a delaunay triangle (nearest-neighbours are always delaunay edges, and the 2 triangles based on this edge have to create an empty circumcircle, so
+ one of them has to be the smallest) which makes the circumcircle empty of other points, so using its origin as the radial origin is correct.
+ But (in principle) the circumcentre might be outside the convex hull; so using the incircle centre would work to for the radial origin & the angular origin.
+ 
+ 
+ */
+
 // The main structure
 struct Delaunator_Swift {
   var triangles: Array<Int>
@@ -90,7 +114,7 @@ struct Delaunator_Swift {
     }
     
     // Update n
-    n = coords.count >> 1
+    //n = coords.count >> 1
     
     // arrays that will store the triangulation graph
     maxTriangles = max(2 * n - 5, 0)
@@ -102,17 +126,21 @@ struct Delaunator_Swift {
     hullPrev = Array(repeating:0, count:n) // edge to prev edge
     hull     = Array(repeating:0, count:n)
     
+    // The size allowed for the hash arrau ordered by angle
+    // Since it is for  the hull it is approx. the square root of the total
+    // number of points
     hashSize = Int(Double(n).squareRoot().rounded(.up))
     hullStart = 0
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
     
-    // Back door
+    // Back door escape if n is zero
     if 0 == n {return}
-
+    
     var hullNext = Array(repeating:0, count:n) // edge to next edge
     var hullHash = Array(repeating:-1, count:hashSize) // angular edge hash
     
+    // Distances from the origin plus index ids
     var dists = Array(repeating:0.0, count:n)
     var ids   = Array(repeating:0, count:n)
     
@@ -135,7 +163,7 @@ struct Delaunator_Swift {
     
     // Centre
     let c = Point(x: 0.5 * (minX + maxX), y: 0.5 * (minY + maxY))
-        
+    
     var minDist = Double.infinity
     var i0 = 0, i1 = 0, i2 = 0
     
@@ -156,6 +184,8 @@ struct Delaunator_Swift {
     for i in 0..<n {
       if i == i0 { continue }
       let d = dist(ax: i0x, ay: i0y, bx: coords[2 * i], by: coords[2 * i + 1])
+      
+      // d is the distance squared - so if it is very small th epoints are very close
       if (d < minDist && d > Static.Epsilon) {
         i1 = i
         minDist = d
@@ -179,8 +209,11 @@ struct Delaunator_Swift {
     var i2x = coords[2 * i2]
     var i2y = coords[2 * i2 + 1]
     
+    
+    // All the possible circumcircles have a
+    // a centre at infinity - so all the points are colinear
     if minRadius == Double.infinity {
-      // order collinear points by dx (or dy if all x are identical)
+      // order colinear points by dx (or dy if all x are identical)
       // and return the list as a hull
       for i in 0..<n {
         // Save the x-distance unless its zero and then save the y-difference instead
@@ -197,6 +230,21 @@ struct Delaunator_Swift {
       quicksortRandom(&ids, using:dists, low:0, high:n - 1)
       var j = 0
       var d0 = -Double.infinity
+      
+      
+      /*
+       This seems to do this
+       Which I don't quite understand
+       
+       for id in ids {
+       if (dists[id] > d0) {
+       hull.append(id)
+       d0 = dists[id]
+       }
+       }
+       
+       */
+      
       for i in 0..<n {
         let id = ids[i]
         if (dists[id] > d0) {
@@ -220,14 +268,19 @@ struct Delaunator_Swift {
       (i1y, i2y) = (i2y, i1y)
     }
     
+    // All the work above was to initialize the seed triangle
+    // The circum-centre of this traingle is the origin for the
+    // radial and azimuthal sorts
+    
     // Get the circumcentre of this triangle
     centre = circumCentre(first:  Point(x:i0x, y:i0y),
                           second: Point(x:i1x, y:i1y),
                           third:  Point(x:i2x, y:i2y))
     
+    // Get the radial distance of each point from th ecentre
     for i in 0..<n {
       dists[i] = dist(ax: coords[2 * i], ay:coords[2 * i + 1],
-                      bx:centre.x, by:centre.y);
+                      bx:centre.x, by:centre.y)
     }
     
     // sort the points by distance from the seed triangle circumCentre
@@ -237,95 +290,204 @@ struct Delaunator_Swift {
     hullStart = i0
     hullSize = 3
     
+    // hullNext[i] -> points to next index on the hull in an anti-clockwise direction
+    // hullPrev[i] -> points to next index on the hull in an      clockwise direction
     hullNext[i0] = i1; hullPrev[i2] = i1
     hullNext[i1] = i2; hullPrev[i0] = i2
     hullNext[i2] = i0; hullPrev[i1] = i0
     
+    
+    // The initial triangle defines the hull
+    // These
     hullTri[i0] = 0
     hullTri[i1] = 1
     hullTri[i2] = 2
-    for i in 0..<hullHash.count {
-      hullHash[i] = -1
-    }
+    //  for i in 0..<hullHash.count {
+    //    hullHash[i] = -1
+    //  }
     
+    // The hash is based on a pseudo-angle so it increases with azimuth
+    // So
     hullHash[hashKey(p:Point(x: i0x, y: i0y))] = i0
     hullHash[hashKey(p:Point(x: i1x, y: i1y))] = i1
     hullHash[hashKey(p:Point(x: i2x, y: i2y))] = i2
     
-    numberEdges = 0
+    // Add the first triangle!
+    numberEdges = 0 // This is not needed...
+    
+    // The first trianle is th econvex hull so all linked edges ar (-1)
     let _ = addTriangle(i0, i1, i2, -1, -1, -1)
     
+    // Now start building the triangulation
+    // The previous point
     var xp = 0.0, yp = 0.0
-    for k in 0..<ids.count {
-      let i = ids[k]
+    
+    // Labels! Just like good old FORTRAN IV
+    projectPoints: for (k, i) in ids.enumerated() {
+      //for k in 0..<ids.count {
+      //let i = ids[k]
       let x = coords[2 * i]
       let y = coords[2 * i + 1]
       
       // skip near-duplicate points
-      if (k > 0 && is_near_zero(x:x-xp) && is_near_zero(x:y-yp)) {continue}
+      if (k > 0 && is_near_zero(x:x-xp) && is_near_zero(x:y-yp)) {continue projectPoints}
+      // if (k > 0 && dist(ax: x,  ay: y, bx: xp, by: yp) < Static.shortestEdgeSquared) {continue}
+      
+      // Save previous point
       xp = x
       yp = y
       
       // skip seed triangle points
-      // This test exact equality?
-      if (i == i0 || i == i1 || i == i2) {continue}
+      if (i == i0 || i == i1 || i == i2) {continue projectPoints}
       
       // find a visible edge on the convex hull using edge hash
+      // This is the projection step in the algorithm
+      // Get the current pseudo-angle hash key
       var start = 0
       let key = hashKey(p:Point(x: x, y: y))
+      
+      // The projection of the point on the convex hull
+      // will cross an edge - find the start of this edge
       for j in 0..<hashSize {
+        // Loop over all the hash keys? (including empty ones)
         start = hullHash[(key + j) % hashSize]
+        
+        // Eventually get to a non-empty hash entry
+        // Then check the next entry - if it is identical keep going because
+        // that means the point was removed
+        // we want the next point to have a greater pseudo angle than point p
         if (start != -1 && start != hullNext[start]) {break}
       }
       
-      start = hullPrev[start]
-      var e = start
-      var q = hullNext[e]
+      // get the previous point - we have bracketed  the projected point
+      var e = hullPrev[start]
+      var q = start
+      start = e
+      
+//      // get the previous point - we have bracketed  the projected point
+//      start = hullPrev[start]
+//      var e = start
+//      var q = hullNext[e]
+      
+      // Check for positive (anti-clockwise) orientation of the triangle [q, e, i] where the projected point is i
+      // Orient returns true for clockwise
+      // So if [i, e, q] is clockwise this test returns false
+      // So
       while (!orient(rx: x, ry: y, qx: coords[2 * e], qy: coords[2 * e + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
         e = q
         if (e == start) {
-          e = -1
-          break
+          e = -1 // e & q are indistinguishable
+          break projectPoints
         }
+        
+        // We have moved around  the hull by one triangle
+        //
+        //       i                i
+        //       |\              /|
+        //       | \            / |
+        //       q--e => next[q]--q
+        //
         q = hullNext[e]
       }
-      
-      if (e == -1) {continue} // likely a near-duplicate point; skip it
-      
-      // add the first triangle from the point
-      var t = addTriangle(e, i, hullNext[e], -1, -1, hullTri[e])
-      
-      // recursively flip triangles from the point until they satisfy the Delaunay condition
-      hullTri[i] = legalize(count: t + 2)
+            
+      // add the first triangle from the point    i
+      // This is actually just [e, i, q]         / \
+      //                                        q---e
+      //
+      // The linked edges are -1 (outside the hull) for (e->i) and (i->q) and hillTri[e] for (q->e)
+      var t = addTriangle(e, i, q, -1, -1, hullTri[e])
+
+      // Number of edges has increased by 3; t is the old number of triangles
+      // Make the new triangle locally delaunany
+      hullTri[i] = legalize(check: t + 2)
       hullTri[e] = t  // keep track of boundary triangles on the hull
+      
+      // We added one triangle - so the hull size goes up by one
+      //
+      //     i
+      //    / \
+      //   q---e        The hull edge (q-e)  has been replaced by two new edges  e (e-i) and i (i-q)
+      //    \ /
+      //     p
+      //
+      //   hullTri[i] = old edge
+      // Notice that hullTri has lots of zero entries - its size is not being changed here, just some zeros are being replaced
+      // It might be better if they were initialized with a negative number
       hullSize += 1
       
-      // walk forward through the hull, adding more triangles and flipping recursively
-      var next = hullNext[e]
-      q = hullNext[next]
-      
+      // walk forward through the hull, adding more triangles and flipping
+      // Equivalent to
+      var next = q
+      q = hullNext[q]
+      // var next = hullNext[e]
+      // q = hullNext[next]
+
+      // Walk around anti-clockwise; add the triangle [next, i, q]
+      //
+      //
+      // This orientation test is on the triangle corner [i, next, q] => true if clockwise == [i, q, next] anti-clockwise
       while (orient(rx: x, ry: y, qx: coords[2 * next], qy: coords[2 * next + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
-        
+
+        // Add this triangle to the triangulation
         t = addTriangle(next, i, q, hullTri[i], -1, hullTri[next])
-        hullTri[i] = legalize(count: t + 2)
+        hullTri[i] = legalize(check: t + 2)
+
+        // This indicates the edge is no longer on the hull
         hullNext[next] = next // mark as removed
+
+        // Reduced hullSize by one
         hullSize -= 1
+
+        // Continue going anti-clockwise
         next = q
         q = hullNext[next]
       }
+//      // walk forward through the hull, adding more triangles and flipping
+//      // Equivalent to
+//      e = q
+//      q = hullNext[e]
+//      
+//      // Walk around anti-clockwise; add the triangle [next, i, q]
+//      //
+//      //
+//      // This orientation test is on the triangle corner [i, e, q] => true if clockwise == [i, q, e] anti-clockwise
+//      while (orient(rx: x, ry: y, qx: coords[2 * e], qy: coords[2 * e + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
+//
+//        // Add this triangle to the triangulation
+//        t = addTriangle(e, i, q, hullTri[i], -1, hullTri[e])
+//        hullTri[i] = legalize(check: t + 2)
+//        
+//        // This indicates the edge is no longer on the hull
+//        hullNext[e] = e // mark as removed
+//        
+//        // Reduced hullSize by one
+//        hullSize -= 1
+//        
+//        // Continue going anti-clockwise
+//        e = q
+//        q = hullNext[e]
+//      }
       
       // walk backward from the other side, adding more triangles and flipping
+      // Why is this conditional?
       if (e == start) {
+        e = start
         q = hullPrev[e]
         while (orient(rx: x, ry: y, qx: coords[2 * q], qy: coords[2 * q + 1], px: coords[2 * e], py: coords[2 * e + 1])) {
           
-          // Not sure this returns correct number of triangles
+          // This actually returns an "edge" number
           t = addTriangle(q, i, e, -1, hullTri[e], hullTri[q])
-          let _ = legalize(count:t + 2)
+          let _ = legalize(check:t + 2)
           hullTri[q] = t
+          
+          // This indicates the edge is no longer on the hull
           hullNext[e] = e // mark as removed
+          
+          // Reduced hullSize by one
           hullSize -= 1
-          e = q;
+          
+          // Continue going clockwise
+          e = q
           q = hullPrev[e]
         }
       }
@@ -334,12 +496,16 @@ struct Delaunator_Swift {
       hullStart   = e; hullPrev[i]    = e
       hullNext[e] = i; hullPrev[next] = i
       hullNext[i] = next
-      
+//      // update the hull indices
+//      hullStart   = e; hullPrev[i]    = q
+//      hullNext[q] = i; hullPrev[q] = i
+//      hullNext[i] = q
       // save the two new edges in the hash table
       hullHash[hashKey(p:Point(x: x, y: y))] = i
       hullHash[hashKey(p:Point(x:coords[2 * e], y:coords[2 * e + 1]))] = e
     }
     
+    // Query is hullTri the same as hull?
     hull = Array(repeating: 0, count: hullSize)
     var e = hullStart
     for i in 0..<hullSize {
@@ -352,12 +518,16 @@ struct Delaunator_Swift {
     halfEdges.removeLast(halfEdges.count - numberEdges)
   }
   
-  mutating func legalize(count: Int) -> Int {
+  
+  mutating func legalize(check edge: Int) -> Int {
     var i = 0, ar = 0
-    var a = count
+    var a = edge
     
     // recursion eliminated with a fixed-size stack
-    while (true) {
+    // Maintains a stack of edges for flipping
+    // If an edge needs flipping adds it to the stack - retains edge
+    
+    flipEdge: while (true) {
       let b:Int = halfEdges[a]
       
       /* if the pair of triangles doesn't satisfy the Delaunay condition
@@ -374,18 +544,48 @@ struct Delaunator_Swift {
        *       ar\ || /br             b\    /br
        *          \||/                  \  /
        *           pr                    pr
+       *
+       *
+       *    p0 -> p0 or q3    a  -> a     b  -> b
+       *    pr -> p1 or q2    al -> a1    bl -> b1
+       *    p1 -> p3 or q0    ar -> a2    br -> b2
+       *    pl -> p2 or q1
+       *
+       *    flip
+       *
+       *    triangles[al] -> p3 or q0
+       *    triangles[b1] -> p0 or q3
+       *    halfEdges[a]  -> halfEdges[b1]
+       *    halfEdges[b]  -> halfEdges[a1]
+       *    halfEdges[a1] <-> halfEdges[b1]
+       *
+       
        */
+      
+      
+      // New triangle is triangle [a]
+      // No way to know which of the [0, 1, 2] edges of b were cut in the projection
+      // so complex remainder trickery to get the edge ids
+      // Once flipped _al_ and _b_ are boundary edges - so no need to check delaunay status
+      // From symmetry surely both _a_ and _br_ should be labelled as non-delaunay?
+      
+      
 
-      // First case is if (a <-> b) is an edge on the convex hull
+      
+      // First case is if (a <-> b) is the convex hell edge
       // In this case no flip can occur
       if (b == -1) {
-        if (i == 0) {break}
+        
+        // If no edges left on stack all edges are locally delaunay
+        if (i == 0) {break flipEdge}
+        
+        // Get the next pending edge
         i -= 1
         a = EDGE_STACK[i]
-        continue
+        continue flipEdge
       }
       
-      // Define neighbouring edges in both triangles
+      // Get the
       let a0 = a - a % 3
       ar = a0 + (a + 2) % 3
       
@@ -411,30 +611,36 @@ struct Delaunator_Swift {
         let hbl = halfEdges[bl]
         
         // edge swapped on the other side of the hull (rare); fix the halfEdge reference
+        // Repairing the hull when a flip has disturbed it
+        // _bl_ is the only edge this can happen with - because _br_ is not swapped, and _ar_ and _al_ are on
         if (hbl == -1) {
           var e = hullStart
-          repeat {
+          repairHull: repeat {
             if (hullTri[e] == bl) {
               hullTri[e] = a
-              break
+              break repairHull
             }
             e = hullPrev[e]
-          } while (e != hullStart);
+          } while (e != hullStart)
         }
         
         link(a, hbl)
         link(b, halfEdges[ar])
         link(ar, bl)
         
-        //let br = b0 + (b + 1) % 3
+        // let br = b0 + (b + 1) % 3
         
         // don't worry about hitting the cap: it can only happen on extremely degenerate input
+        // Fixme
         if (i < EDGE_STACK.count) {
           EDGE_STACK[i] = b0 + (b + 1) % 3 // br
           i += 1
         }
       } else {
-        if (i == 0) {break}
+        // Get here when an edge (a) is locally delaunay
+        
+        
+        if (i == 0) {break flipEdge}
         i -= 1
         a = EDGE_STACK[i]
       }
@@ -467,15 +673,21 @@ struct Delaunator_Swift {
     // Save the value of numberEdges
     let t = numberEdges
     
+    // Add the triangle [i0, i1, i2]
+    // These actually indicate halfEdge ids
     triangles[t] = i0
     triangles[t + 1] = i1
     triangles[t + 2] = i2
     
+    // Connect the paired halfEdges
     link(t, a);
     link(t + 1, b)
     link(t + 2, c)
     
-    self.numberEdges += 3
+    // Added three extra halfEdges
+    numberEdges += 3
+    
+    // Return the original number of halfEdges
     return t
   }
   
@@ -557,7 +769,7 @@ func validateTriangulation(_ phrase: String,
     hullAreas.append((points[pi].x - points[pj].x) * (points[pi].y + points[pj].y))
     
     // Surely i == j + 1 and why is it (j + 3) here and not (j +2)??
-    let c = convex(rx:points[d.hull[j]].x, ry:points[d.hull[j]].y,
+    let c = !orient(rx:points[d.hull[j]].x, ry:points[d.hull[j]].y,
                    qx:points[d.hull[(j + 1) % d.hull.count]].x,
                    qy:points[d.hull[(j + 1) % d.hull.count]].y,
                    px:points[d.hull[(j + 3) % d.hull.count]].x,
@@ -659,35 +871,86 @@ func pseudoAngle(dx: Double, dy: Double) -> Double {
   let p = dx / (abs(dx) + abs(dy))
   return (dy > 0.0 ? 3.0 - p : 1.0 + p) / 4.0 // [0..1]
 }
+//
+//// return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
+//func orientIfSure(px: (Double), py: (Double),
+//                  rx: (Double), ry: (Double),
+//                  qx: (Double), qy: (Double)) -> Double {
+//  let l = (ry - py) * (qx - px);
+//  let r = (rx - px) * (qy - py);
+//  return abs(l - r) >= Static.Threshold * abs(l + r) ? l - r : 0.0
+//}
+//
+//// a more robust orientation test that's stable in a given triangle (to fix robustness issues)
+//func orient(rx: (Double), ry: (Double),
+//            qx: (Double), qy: (Double),
+//            px: (Double), py: (Double)) -> Bool {
+//  // First test
+//  var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
+//  if (sense != 0.0) {return sense < -Static.Tolerance}
+//
+//  // Second test
+//  sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
+//  if (sense != 0.0) {return sense < -Static.Tolerance}
+//
+//  // Final test
+//  sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
+//
+//  // Final case
+//  return (sense < -Static.Tolerance)
+//}
 
 // return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
+//
+// Is a point p to the left or right of a vector r->q
+// Or more symmetrically are the points (r->q->p) in an anti-clockwise order? +ve yes -ve no
+//
+/**
+ [Robust Predicates](http://www.cs.cmu.edu/~quake/robust.html)
+ */
 func orientIfSure(px: (Double), py: (Double),
                   rx: (Double), ry: (Double),
                   qx: (Double), qy: (Double)) -> Double {
-  let l = (ry - py) * (qx - px);
-  let r = (rx - px) * (qy - py);
-  return abs(l - r) >= Static.Threshold * abs(l + r) ? l - r : 0.0
+  // Points a, b, c
+  // p => c
+  // r => b
+  // q => a
+  
+  // The left and right determinants
+  let detLeft  = (ry - py) * (qx - px)
+  let detRight = (rx - px) * (qy - py)
+  
+  // We only need to determine the sign +ve/zero/-ve
+  // Positive - anticlockwise
+  // Zero     - colinear
+  // Negative - clockwise
+  let det = detLeft - detRight
+  return abs(det) >= Static.Threshold * abs(detLeft + detRight) ? det : 0
 }
 
+
+
 // a more robust orientation test that's stable in a given triangle (to fix robustness issues)
+// This (for some reason) returns true (clockwise)
+//                                false (anticlockwise)
 func orient(rx: (Double), ry: (Double),
             qx: (Double), qy: (Double),
             px: (Double), py: (Double)) -> Bool {
-  // First test
+  // First test triangle [p, r, q]
   var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
-  if (sense != 0.0) {return sense < -Static.Tolerance}
+  if (sense != 0) {return sense < 0}
   
-  // Second test
+  // Second test triangle [r, q, p]
   sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
-  if (sense != 0.0) {return sense < -Static.Tolerance}
+  if (sense != 0) {return sense < 0}
   
-  // Final test
+  // Final test triangle [q, p, r]
+  // If sense == 0 it was so for all the tests - so in this case assume true if zero
   sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
   
   // Final case
-  return (sense < -Static.Tolerance)
+  return (sense < 0)
 }
-
 
 
 /*
@@ -771,24 +1034,24 @@ func sum(x: [Double]) ->  Double {
   return sum + err
 }
 
-// Is a hull convex?
-func convex(rx: (Double), ry: (Double),
-            qx: (Double), qy: (Double),
-            px: (Double), py: (Double)) -> Bool {
-  // First test
-  var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
-  if !is_near_zero(x:sense) {return sense >= Static.Tolerance}
-  
-  // Second test
-  sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
-  if !is_near_zero(x:sense) {return sense >= Static.Tolerance}
-  
-  // Final test
-  sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
-  
-  // Final case - different threshold
-  return (sense >= -Static.Tolerance)
-}
+//// Is a hull convex?
+//func convex(rx: (Double), ry: (Double),
+//            qx: (Double), qy: (Double),
+//            px: (Double), py: (Double)) -> Bool {
+//  // First test
+//  var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
+//  if !is_near_zero(x:sense) {return sense >= Static.Tolerance}
+//  
+//  // Second test
+//  sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
+//  if !is_near_zero(x:sense) {return sense >= Static.Tolerance}
+//  
+//  // Final test
+//  sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
+//  
+//  // Final case - different threshold
+//  return (sense >= -Static.Tolerance)
+//}
 
 
 func circumCentre(first a:Point, second b:Point, third c:Point) -> Point {
