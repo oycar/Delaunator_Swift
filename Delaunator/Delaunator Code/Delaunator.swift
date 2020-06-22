@@ -95,7 +95,7 @@ struct Delaunator_Swift {
   var hull: Array<Int>
   
   var numberEdges: Int
-  fileprivate var n, maxTriangles,  hashSize, hullStart, hullSize: Int
+  fileprivate var numberPoints, maxTriangles,  hashSize, hullStart, hullSize: Int
   fileprivate  var hullTri: Array<Int>
   fileprivate var hullPrev: Array<Int>
   fileprivate var centre: Point
@@ -103,46 +103,36 @@ struct Delaunator_Swift {
   
   // Use a provided init
   init(from points: Array<Point>) {
-    n = points.count
-    coords = Array(repeating:0.0, count:2*n)
-    
-    // Set the coords array
-    for (i, p) in points.enumerated() {
-      // Set each co-ordinate
-      coords[2 * i]     = p.x
-      coords[2 * i + 1] = p.y
-    }
-    
-    // Update n
-    //n = coords.count >> 1
+    numberPoints = points.count
+    coords = Array(repeating:0.0, count:2*numberPoints)
     
     // arrays that will store the triangulation graph
-    maxTriangles = max(2 * n - 5, 0)
+    maxTriangles = max(2 * numberPoints - 5, 0)
     numberEdges = 0
     triangles = Array(repeating:0, count:3 * maxTriangles)
     halfEdges = Array(repeating:0, count:3 * maxTriangles)
     
-    hullTri  = Array(repeating:0, count:n) // edge to adjacent triangle
-    hullPrev = Array(repeating:0, count:n) // edge to prev edge
-    hull     = Array(repeating:0, count:n)
+    hullTri  = Array(repeating:0, count:numberPoints) // edge to adjacent triangle
+    hullPrev = Array(repeating:0, count:numberPoints) // edge to prev edge
+    hull     = Array(repeating:0, count:numberPoints)
     
     // The size allowed for the hash arrau ordered by angle
     // Since it is for  the hull it is approx. the square root of the total
     // number of points
-    hashSize = Int(Double(n).squareRoot().rounded(.up))
+    hashSize = Int(Double(numberPoints).squareRoot().rounded(.up))
     hullStart = 0
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
     
-    // Back door escape if n is zero
-    if 0 == n {return}
+    // Back door escape if numberPoints is zero
+    if 0 == numberPoints {return}
     
-    var hullNext = Array(repeating:0, count:n) // edge to next edge
+    var hullNext = Array(repeating:0, count:numberPoints) // edge to next edge
     var hullHash = Array(repeating:-1, count:hashSize) // angular edge hash
     
     // Distances from the origin plus index ids
-    var dists = Array(repeating:0.0, count:n)
-    var ids   = Array(repeating:0, count:n)
+    var dists = Array(repeating:0.0, count:numberPoints)
+    var ids   = Array(repeating:0, count:numberPoints)
     
     // populate an array of point indices; calculate input data bbox
     var minX =  Double.infinity
@@ -150,14 +140,15 @@ struct Delaunator_Swift {
     var minY =  Double.infinity
     var maxY = -Double.infinity
     
-    // Compute bounds
-    for i in 0..<n {
-      let x = coords[2 * i]
-      let y = coords[2 * i + 1]
-      if (x < minX)  {minX = x}
-      if (y < minY)  {minY = y}
-      if (x > maxX)  {maxX = x}
-      if (y > maxY)  {maxY = y}
+    // Compute bounds and set the coords array
+    for (i, p) in points.enumerated() {
+      // Set each co-ordinate
+      coords[2 * i]     = p.x
+      coords[2 * i + 1] = p.y
+      if (p.x < minX)  {minX = p.x}
+      if (p.y < minY)  {minY = p.y}
+      if (p.x > maxX)  {maxX = p.x}
+      if (p.y > maxY)  {maxY = p.y}
       ids[i] = i
     }
     
@@ -168,7 +159,7 @@ struct Delaunator_Swift {
     var i0 = 0, i1 = 0, i2 = 0
     
     // pick a seed point close to the centre
-    for i in 0..<n {
+    for i in 0..<numberPoints {
       let d = dist(ax: c.x, ay: c.y, bx: coords[2 * i], by: coords[2 * i + 1])
       if d < minDist {
         i0 = i
@@ -181,7 +172,7 @@ struct Delaunator_Swift {
     minDist = Double.infinity
     
     // find the point closest to the seed
-    for i in 0..<n {
+    for i in 0..<numberPoints {
       if i == i0 { continue }
       let d = dist(ax: i0x, ay: i0y, bx: coords[2 * i], by: coords[2 * i + 1])
       
@@ -197,7 +188,7 @@ struct Delaunator_Swift {
     var minRadius = Double.infinity
     
     // find the third point which forms the smallest circumCircle with the first two
-    for i in 0..<n {
+    for i in 0..<numberPoints {
       if (i == i0) || (i == i1) { continue }
       let r = circumRadius(ax: i0x, ay: i0y, bx: i1x, by: i1y,
                            cx: coords[2 * i], cy: coords[2 * i + 1])
@@ -215,7 +206,7 @@ struct Delaunator_Swift {
     if minRadius == Double.infinity {
       // order colinear points by dx (or dy if all x are identical)
       // and return the list as a hull
-      for i in 0..<n {
+      for i in 0..<numberPoints {
         // Save the x-distance unless its zero and then save the y-difference instead
         let deltaX = coords[2 * i] - coords[0]
         if (is_near_zero(x: deltaX)) {
@@ -227,7 +218,7 @@ struct Delaunator_Swift {
       
       // This is a quicksort
       // This sorts the indices in place
-      quicksortRandom(&ids, using:dists, low:0, high:n - 1)
+      quicksortRandom(&ids, using:dists, low:0, high:numberPoints - 1)
       var j = 0
       var d0 = -Double.infinity
       
@@ -245,7 +236,7 @@ struct Delaunator_Swift {
        
        */
       
-      for i in 0..<n {
+      for i in 0..<numberPoints {
         let id = ids[i]
         if (dists[id] > d0) {
           hull[j] = id
@@ -253,7 +244,7 @@ struct Delaunator_Swift {
           d0 = dists[id]
         }
       }
-      hull.removeLast(n - j)
+      hull.removeLast(numberPoints - j)
       triangles = []
       halfEdges = []
       return
@@ -278,13 +269,13 @@ struct Delaunator_Swift {
                           third:  Point(x:i2x, y:i2y))
     
     // Get the radial distance of each point from th ecentre
-    for i in 0..<n {
+    for i in 0..<numberPoints {
       dists[i] = dist(ax: coords[2 * i], ay:coords[2 * i + 1],
                       bx:centre.x, by:centre.y)
     }
     
     // sort the points by distance from the seed triangle circumCentre
-    quicksortRandom(&ids, using:dists, low:0, high:n - 1)
+    quicksortRandom(&ids, using:dists, low:0, high:numberPoints - 1)
     
     // set up the seed triangle as the starting hull
     hullStart = i0
@@ -349,44 +340,44 @@ struct Delaunator_Swift {
       // The projection of the point on the convex hull
       // will cross an edge - find the start of this edge
       for j in 0..<hashSize {
-        // Loop over all the hash keys? (including empty ones)
+        // Loop over all the hash keys
         start = hullHash[(key + j) % hashSize]
         
         // Eventually get to a non-empty hash entry
         // Then check the next entry - if it is identical keep going because
         // that means the point was removed
-        // we want the next point to have a greater pseudo angle than point p
+        // When one is found it is the next point on the hull with a greater azimuth
         if (start != -1 && start != hullNext[start]) {break}
       }
       
       // get the previous point - we have bracketed  the projected point
+      // azimuth(e) <= azimuth(i) <= azimuth(q)
       var e = hullPrev[start]
       var q = start
       start = e
       
-//      // get the previous point - we have bracketed  the projected point
-//      start = hullPrev[start]
-//      var e = start
-//      var q = hullNext[e]
-      
-      // Check for positive (anti-clockwise) orientation of the triangle [q, e, i] where the projected point is i
+      // Check for positive (anti-clockwise) orientation of the triangle [i, e, q] where the projected point is i
       // Orient returns true for clockwise
       // So if [i, e, q] is clockwise this test returns false
       // So
       while (!orient(rx: x, ry: y, qx: coords[2 * e], qy: coords[2 * e + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
-        e = q
-        if (e == start) {
-          e = -1 // e & q are indistinguishable
+        if (q == start) {
+          // Can't add this point! All colinear input?
           break projectPoints
         }
         
-        // We have moved around  the hull by one triangle
+        // Move around  the hull by one triangle until it [i, e, q] is clockwise
         //
-        //       i                i
-        //       |\              /|
-        //       | \            / |
-        //       q--e => next[q]--q
-        //
+        //       i            i                 i
+        //       |           /|                /|
+        //       |          / |               / |
+        // n <-- q     =>  n--q  relabel =>  q--e
+        //       |
+        //       |
+        //       e <--
+        //   +ve <== Direction
+        // e = q
+        e = q
         q = hullNext[e]
       }
             
@@ -415,69 +406,67 @@ struct Delaunator_Swift {
       // It might be better if they were initialized with a negative number
       hullSize += 1
       
-      // walk forward through the hull, adding more triangles and flipping
-      // Equivalent to
-      var next = q
-      q = hullNext[q]
-      // var next = hullNext[e]
-      // q = hullNext[next]
+      // Move forward around the hull
+      //
+      //        i             i
+      //       / \           / \
+      //      /   \         /   \
+      //    q ---- n   <=  q ---- e
+      //        Anticlockwise
 
-      // Walk around anti-clockwise; add the triangle [next, i, q]
+
+      var n = q
+      q = hullNext[q]
+
+      // Walk around anti-clockwise; add the triangle [n, i, q]
       //
       //
-      // This orientation test is on the triangle corner [i, next, q] => true if clockwise == [i, q, next] anti-clockwise
-      while (orient(rx: x, ry: y, qx: coords[2 * next], qy: coords[2 * next + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
+      // This orientation test is on the triangle [i, n, q] => true if clockwise <==> true if [n, i, q] anticlockwise
+      while (orient(rx: x, ry: y, qx: coords[2 * n], qy: coords[2 * n + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
 
         // Add this triangle to the triangulation
-        t = addTriangle(next, i, q, hullTri[i], -1, hullTri[next])
+        t = addTriangle(n, i, q, hullTri[i], -1, hullTri[n])
+        
+        // Fix locally non-delaunay edges
         hullTri[i] = legalize(check: t + 2)
 
         // This indicates the edge is no longer on the hull
-        hullNext[next] = next // mark as removed
+        hullNext[n] = n // mark as removed
 
         // Reduced hullSize by one
         hullSize -= 1
 
         // Continue going anti-clockwise
-        next = q
-        q = hullNext[next]
+        n = q
+        q = hullNext[n]
       }
-//      // walk forward through the hull, adding more triangles and flipping
-//      // Equivalent to
-//      e = q
-//      q = hullNext[e]
-//      
-//      // Walk around anti-clockwise; add the triangle [next, i, q]
-//      //
-//      //
-//      // This orientation test is on the triangle corner [i, e, q] => true if clockwise == [i, q, e] anti-clockwise
-//      while (orient(rx: x, ry: y, qx: coords[2 * e], qy: coords[2 * e + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
-//
-//        // Add this triangle to the triangulation
-//        t = addTriangle(e, i, q, hullTri[i], -1, hullTri[e])
-//        hullTri[i] = legalize(check: t + 2)
-//        
-//        // This indicates the edge is no longer on the hull
-//        hullNext[e] = e // mark as removed
-//        
-//        // Reduced hullSize by one
-//        hullSize -= 1
-//        
-//        // Continue going anti-clockwise
-//        e = q
-//        q = hullNext[e]
-//      }
       
-      // walk backward from the other side, adding more triangles and flipping
+      // walk backward from the other side, adding more triangles
+      // This is a clockwise search
       // Why is this conditional?
       if (e == start) {
-        e = start
+        
+        // Move backward around the hull
+        //
+        //        i             i
+        //       / \           / \
+        //      /   \         /   \
+        //    q ---- e   =>  e ---- q
+        //         Clockwise
+        
+        //e = start // obviously
         q = hullPrev[e]
+        
+        // This orientation test is on the triangle [i, q, e] => true if clockwise <==> true if [q, i, e] anticlockwise
         while (orient(rx: x, ry: y, qx: coords[2 * q], qy: coords[2 * q + 1], px: coords[2 * e], py: coords[2 * e + 1])) {
           
-          // This actually returns an "edge" number
+          // Add this triangle to the triangulation
           t = addTriangle(q, i, e, -1, hullTri[e], hullTri[q])
+          
+          // Fix locally non-delaunay edges
           let _ = legalize(check:t + 2)
+          
+          
           hullTri[q] = t
           
           // This indicates the edge is no longer on the hull
@@ -493,13 +482,10 @@ struct Delaunator_Swift {
       }
       
       // update the hull indices
-      hullStart   = e; hullPrev[i]    = e
-      hullNext[e] = i; hullPrev[next] = i
-      hullNext[i] = next
-//      // update the hull indices
-//      hullStart   = e; hullPrev[i]    = q
-//      hullNext[q] = i; hullPrev[q] = i
-//      hullNext[i] = q
+      hullStart   = e
+      hullPrev[i] = e ; hullNext[e] = i
+      hullPrev[n] = i ; hullNext[i] = n
+
       // save the two new edges in the hash table
       hullHash[hashKey(p:Point(x: x, y: y))] = i
       hullHash[hashKey(p:Point(x:coords[2 * e], y:coords[2 * e + 1]))] = e
