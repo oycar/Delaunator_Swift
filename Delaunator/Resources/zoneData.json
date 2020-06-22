@@ -4064,7 +4064,7 @@
     },
     {
       "name": "collinear",
-      "points": [
+      "points": [[12,0], [15,0], [-3,0], [417,0], [7,0],
         [
           0,
           0
@@ -4083,7 +4083,6 @@
         ]
       ],
       "header": {
-        "tolerance": 1.0e-06,
         "action": "testEquals",
         "hull": [
           0,

@@ -48,8 +48,8 @@ struct Triangulation: Hashable, Codable, Identifiable {
   // Provided init
   init(using delaunay:Delaunator_Swift, with points:Array<Point>) {
     triangles   = delaunay.triangles
-    halfEdges   = delaunay.halfEdges //.map({Index(id:$0)})
-    hull        = delaunay.hull //.map({Index(id:$0)})
+    halfEdges   = delaunay.halfEdges
+    hull        = delaunay.hull
     numberEdges = delaunay.numberEdges
     self.points = points
   }
@@ -96,6 +96,7 @@ struct Delaunator_Swift {
   
   var numberEdges: Int
   fileprivate var numberPoints, maxTriangles,  hashSize, hullStart, hullSize: Int
+  fileprivate var hashFactor: Double
   fileprivate  var hullTri: Array<Int>
   fileprivate var hullPrev: Array<Int>
   fileprivate var centre: Point
@@ -119,7 +120,11 @@ struct Delaunator_Swift {
     // The size allowed for the hash arrau ordered by angle
     // Since it is for  the hull it is approx. the square root of the total
     // number of points
-    hashSize = Int(Double(numberPoints).squareRoot().rounded(.up))
+    hashFactor = Double(numberPoints).squareRoot().rounded(.up)
+    hashSize = Int(hashFactor)
+    hashFactor *= 0.25
+    
+    
     hullStart = 0
     hullSize = 0
     centre = Point(x:0.0, y:0.0)
@@ -162,10 +167,10 @@ struct Delaunator_Swift {
     // Centre
     let c = Point(x: 0.5 * (minX + maxX), y: 0.5 * (minY + maxY))
     
-    var minDist = Double.infinity
     var i0 = 0, i1 = 0, i2 = 0
     
     // pick a seed point close to the centre
+    var minDist = Double.infinity
     for i in 0..<numberPoints {
       let d = dist(ax: c.x, ay: c.y, bx: coords[2 * i], by: coords[2 * i + 1])
       if d < minDist {
@@ -176,9 +181,9 @@ struct Delaunator_Swift {
     let i0x = coords[2 * i0]
     let i0y = coords[2 * i0 + 1]
     
-    minDist = Double.infinity
     
     // find the point closest to the seed
+    minDist = Double.infinity
     for i in 0..<numberPoints {
       if i == i0 { continue }
       let d = dist(ax: i0x, ay: i0y, bx: coords[2 * i], by: coords[2 * i + 1])
@@ -192,13 +197,13 @@ struct Delaunator_Swift {
     var i1x = coords[2 * i1]
     var i1y = coords[2 * i1 + 1]
     
-    var minRadius = Double.infinity
-    
     // find the third point which forms the smallest circumCircle with the first two
+    var minRadius = Double.infinity
     for i in 0..<numberPoints {
       if (i == i0) || (i == i1) { continue }
-      let r = circumRadius(ax: i0x, ay: i0y, bx: i1x, by: i1y,
-                           cx: coords[2 * i], cy: coords[2 * i + 1])
+      let r = circumRadius(i0x, i0y,
+                           i1x, i1y,
+                           coords[2 * i], coords[2 * i + 1])
       if r < minRadius {
         i2 = i
         minRadius = r
@@ -223,42 +228,22 @@ struct Delaunator_Swift {
         }
       }
       
-      // This is a quicksort
       // This sorts the indices in place
+      // Will either be the x or y component of the actual separations
       quicksortRandom(&ids, using:dists, low:0, high:numberPoints - 1)
-      var j = 0
-      var d0 = -Double.infinity
       
-      
-      /*
-       This seems to do this
-       Which I don't quite understand
-       
-       for id in ids {
-       if (dists[id] > d0) {
-       hull.append(id)
-       d0 = dists[id]
-       }
-       }
-       
-       */
-      
-      for i in 0..<numberPoints {
-        let id = ids[i]
-        if (dists[id] > d0) {
-          hull[j] = id
-          j += 1
-          d0 = dists[id]
-        }
-      }
-      hull.removeLast(numberPoints - j)
+      // The hull is just the sorted ids
+      hull = ids
+      hull.removeLast(numberPoints - hull.count)
       triangles = []
       halfEdges = []
       return
     }
     
-    // swap the order of the seed points for anticlockwise orientation
-    if (!orient(rx: i0x, ry:i0y, qx: i1x, qy: i1y, px: i2x, py: i2y)) {
+    // swap the order of the seed points
+    // to ensure seed triangle has
+    // an anticlockwise orientation
+    if (!orient(i0x, i0y, i1x, i1y, i2x, i2y)) {
       // Swap i1 & i2
       (i1, i2) = (i2, i1)
       (i1x, i2x) = (i2x, i1x)
@@ -305,9 +290,7 @@ struct Delaunator_Swift {
     hullHash[hashKey(p:Point(x: i2x, y: i2y))] = i2
     
     // Add the first triangle!
-    numberEdges = 0 // This is not needed...
-    
-    // The first trianle is th econvex hull so all linked edges ar (-1)
+    // The first trianle is the convex hull so all linked edges ar (-1)
     let _ = addTriangle(i0, i1, i2, -1, -1, -1)
     
     // Now start building the triangulation
@@ -360,7 +343,9 @@ struct Delaunator_Swift {
       // Check for positive (anti-clockwise) orientation of the triangle [i, q, e] where the projected point is i
       // So if [i, q, e] is clockwise this test fails and the triangle is replaced in the loop
       // So
-      while (!orient(rx: x, ry: y, qx: coords[2 * q], qy: coords[2 * q + 1], px: coords[2 * e], py: coords[2 * e + 1])) {
+      while (!orient(x, y,
+                     coords[2 * q], coords[2 * q + 1],
+                     coords[2 * e], coords[2 * e + 1])) {
         if (q == start) {
           // Can't add this point! All colinear input?
           break projectPoints
@@ -396,7 +381,7 @@ struct Delaunator_Swift {
       //
       //     i
       //    / \
-      //   q---e        The hull edge (q-e)  has been replaced by two new edges  e (e-i) and i (i-q)
+      //   q---e        The hull edge (e->q) has been replaced by two new edges (e->i) and (i->q)
       //    \ /
       //     p
       //
@@ -419,7 +404,9 @@ struct Delaunator_Swift {
       //
       //
       // This orientation test is on the triangle [n, i, q] => true if anticlockwise
-      while (orient(rx: x, ry: y, qx: coords[2 * q], qy: coords[2 * q + 1], px: coords[2 * n], py: coords[2 * n + 1])) {
+      while (orient(x, y,
+                    coords[2 * q], coords[2 * q + 1],
+                    coords[2 * n], coords[2 * n + 1])) {
 
         // Add this triangle to the triangulation
         t = addTriangle(n, i, q, hullTri[i], -1, hullTri[n])
@@ -467,7 +454,9 @@ struct Delaunator_Swift {
         q = hullPrev[e]
         
         // This orientation test is on the triangle [i, e, q] => true if anticlockwise
-        while (orient(rx: x, ry: y, qx: coords[2 * e], qy: coords[2 * e + 1], px: coords[2 * q], py: coords[2 * q + 1])) {
+        while (orient(x, y,
+                      coords[2 * e], coords[2 * e + 1],
+                      coords[2 * q], coords[2 * q + 1])) {
           
           // Add this triangle to the triangulation
           t = addTriangle(q, i, e, -1, hullTri[e], hullTri[q])
@@ -501,7 +490,7 @@ struct Delaunator_Swift {
       hullHash[hashKey(p:Point(x:coords[2 * e], y:coords[2 * e + 1]))] = e
     }
     
-    // Query how does hullTri differ from hull?
+    // Record the hull
     hull = Array(repeating: 0, count: hullSize)
     var e = hullStart
     for i in 0..<hullSize {
@@ -648,7 +637,7 @@ struct Delaunator_Swift {
   
   // Get a hash key - need to do  lot of type casting
   func hashKey(p:Point) -> Int {
-    return Int((Double(hashSize) * pseudoAngle(dx:p.x - centre.x, dy:p.y - centre.y)).rounded(.down)) % hashSize
+    return Int(hashFactor * pseudoAngle(dx:p.x - centre.x, dy:p.y - centre.y).rounded(.down)) % hashSize
   }
   
   
@@ -766,11 +755,9 @@ func validateTriangulation(_ phrase: String,
     hullAreas.append((points[pi].x - points[pj].x) * (points[pi].y + points[pj].y))
     
     // Surely i == j + 1 and why is it (j + 3) here and not (j +2)??
-    let c = orient(rx:points[d.hull[j]].x, ry:points[d.hull[j]].y,
-                   qx:points[d.hull[(j + 1) % d.hull.count]].x,
-                   qy:points[d.hull[(j + 1) % d.hull.count]].y,
-                   px:points[d.hull[(j + 3) % d.hull.count]].x,
-                   py:points[d.hull[(j + 3) % d.hull.count]].y)
+    let c = orient(points[d.hull[j]].x,                      points[d.hull[j]].y,
+                   points[d.hull[(j + 1) % d.hull.count]].x, points[d.hull[(j + 1) % d.hull.count]].y,
+                   points[d.hull[(j + 3) % d.hull.count]].x, points[d.hull[(j + 3) % d.hull.count]].y)
     if !c {
       print(String(format:"hull is not convex at %d", j), to: &errorStream)
       return false
@@ -817,6 +804,7 @@ func dist(ax: (Double), ay: (Double),
   return dx * dx + dy * dy
 }
 
+// Is point p inside the triangle abc
 func inCircle(ax: (Double), ay: (Double),
               bx: (Double), by: (Double),
               cx: (Double), cy: (Double),
@@ -839,9 +827,12 @@ func inCircle(ax: (Double), ay: (Double),
 }
 
 
-func circumRadius(ax: Double, ay: Double,
-                  bx: Double, by: Double,
-                  cx: Double, cy: Double) -> Double {
+func circumRadius(_ ax: Double, _ ay: Double,
+                  _ bx: Double, _ by: Double,
+                  _ cx: Double, _ cy: Double) -> Double {
+  // Points a, b, c
+  // Form a triangle
+  
   let dx = bx - ax
   let dy = by - ay
   let ex = cx - ax
@@ -853,49 +844,21 @@ func circumRadius(ax: Double, ay: Double,
   
   let x = (ey * bl - dy * cl) * d
   let y = (dx * cl - ex * bl) * d
-  let r = x * x + y * y
+  //let r = x * x + y * y
   
   // Is zero present in this list?
-  if ([bl, cl, d, r].contains {is_near_zero(x: $0)} ) {
+  if ([bl, cl, d].contains {is_near_zero(x: $0)} ) {
     return 0.0
   }
   
-  return r
+  return x * x + y * y // r
 }
 
 // monotonically increases with real angle, but doesn't need expensive trigonometry
 func pseudoAngle(dx: Double, dy: Double) -> Double {
   let p = dx / (abs(dx) + abs(dy))
-  return (dy > 0.0 ? 3.0 - p : 1.0 + p) / 4.0 // [0..1]
+  return dy > 0 ? 3 - p : 1 + p // [0..4]
 }
-//
-//// return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
-//func orientIfSure(px: (Double), py: (Double),
-//                  rx: (Double), ry: (Double),
-//                  qx: (Double), qy: (Double)) -> Double {
-//  let l = (ry - py) * (qx - px);
-//  let r = (rx - px) * (qy - py);
-//  return abs(l - r) >= Static.Threshold * abs(l + r) ? l - r : 0.0
-//}
-//
-//// a more robust orientation test that's stable in a given triangle (to fix robustness issues)
-//func orient(rx: (Double), ry: (Double),
-//            qx: (Double), qy: (Double),
-//            px: (Double), py: (Double)) -> Bool {
-//  // First test
-//  var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
-//  if (sense != 0.0) {return sense < -Static.Tolerance}
-//
-//  // Second test
-//  sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
-//  if (sense != 0.0) {return sense < -Static.Tolerance}
-//
-//  // Final test
-//  sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
-//
-//  // Final case
-//  return (sense < -Static.Tolerance)
-//}
 
 // return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
 //
@@ -905,17 +868,16 @@ func pseudoAngle(dx: Double, dy: Double) -> Double {
 /**
  [Robust Predicates](http://www.cs.cmu.edu/~quake/robust.html)
  */
-func orientIfSure(px: (Double), py: (Double),
-                  rx: (Double), ry: (Double),
-                  qx: (Double), qy: (Double)) -> Double {
+func orientIfSure(_ ax: (Double), _ ay: (Double),
+                  _ bx: (Double), _ by: (Double),
+                  _ cx: (Double), _ cy: (Double)) -> Double {
+  
   // Points a, b, c
-  // p => c
-  // r => b
-  // q => a
+  // Form a triangle
   
   // The left and right determinants
-  let detLeft  = (ry - py) * (qx - px)
-  let detRight = (rx - px) * (qy - py)
+  let detLeft  = (ay - cy) * (bx - cx)
+  let detRight = (ax - cx) * (by - cy)
   
   // We only need to determine the sign +ve/zero/-ve
   // Positive - anticlockwise
@@ -925,25 +887,29 @@ func orientIfSure(px: (Double), py: (Double),
   return abs(det) >= Static.Threshold * abs(detLeft + detRight) ? det : 0
 }
 
-
-
 // a more robust orientation test that's stable in a given triangle (to fix robustness issues)
 // This returns true  (anticlockwise)
 //              false (clockwise)
-func orient(rx: (Double), ry: (Double),
-            qx: (Double), qy: (Double),
-            px: (Double), py: (Double)) -> Bool {
-  // First test triangle [p, r, q]
-  var sense = orientIfSure(px: px, py: py, rx: rx, ry: ry, qx: qx, qy: qy)
+func orient(_ ax: (Double), _ ay: (Double),
+            _ bx: (Double), _ by: (Double),
+            _ cx: (Double), _ cy: (Double)) -> Bool {
+  // First test triangle [a, b, c]
+  var sense = orientIfSure(ax, ay,
+                           bx, by,
+                           cx, cy)
   if (sense != 0) {return sense > 0}
   
-  // Second test triangle [r, q, p]
-  sense = orientIfSure(px: rx, py: ry, rx: qx, ry: qy, qx: px, qy: py)
+  // Second test triangle [b, c, a]
+  sense = orientIfSure(bx, by,
+                       cx, cy,
+                       ax, ay)
   if (sense != 0) {return sense > 0}
   
-  // Final test triangle [q, p, r]
+  // Final test triangle [c, a, b]
   // If sense == 0 it was so for all the tests - so in this case assume true if zero
-  sense = orientIfSure(px: qx, py: qy, rx: px, ry: py, qx: rx, qy: ry)
+  sense = orientIfSure(cx, cy,
+                       ax, ay,
+                       bx, by)
   
   // Final case
   return (sense > 0)
