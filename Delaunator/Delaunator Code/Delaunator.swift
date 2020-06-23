@@ -23,7 +23,8 @@ final class StandardErrorOutputStream: TextOutputStream {
 var errorStream = StandardErrorOutputStream()
 
 // Start with some global constants
-var EDGE_STACK  = Array(repeating:0, count:512)
+//var EDGE_STACK  = Array(repeating:0, count:512)
+var Edge_Stack:Array<Int> = []
 
 
 // Define a simple point struct
@@ -503,8 +504,8 @@ struct Delaunator_Swift {
   
   
   mutating func legalize(edge e: Int) -> Int {
-    var stackCount = 0, a2 = 0
-    var a = e
+    var a  = e,
+        a2 = 0
     
     // recursion eliminated with a fixed-size stack
     // Maintains a stack of edges for flipping
@@ -555,11 +556,12 @@ struct Delaunator_Swift {
       if (b == -1) {
         
         // If no edges left on stack all edges are locally delaunay
-        if (stackCount == 0) {break flipEdge}
         
         // Get the next pending edge
-        stackCount -= 1
-        a = EDGE_STACK[stackCount]
+        a = Edge_Stack.popLast() ?? -1
+
+        // All done if this is negative
+        if (a == -1) {break flipEdge}
         continue flipEdge
       }
       
@@ -616,17 +618,14 @@ struct Delaunator_Swift {
         link(b, halfEdges[a2])
         link(a2, b2)
                 
-        // don't worry about hitting the cap: it can only happen on extremely degenerate input
-        // Fixme
-        if (stackCount < EDGE_STACK.count) {
-          EDGE_STACK[stackCount] = b0 + (b + 1) % 3 // b1
-          stackCount += 1
-        }
+        // Add an edge to the stack
+        Edge_Stack.append(b0 + (b + 1) % 3) // b1
       } else {
         // Get here when an edge (a) is locally delaunay
-        if (stackCount == 0) {break flipEdge}
-        stackCount -= 1
-        a = EDGE_STACK[stackCount]
+        
+        // Pop the last element
+        a = Edge_Stack.popLast() ?? -1
+        if (a == -1) {break flipEdge}
       }
     }
     
@@ -703,6 +702,7 @@ func dist(ax: (Double), ay: (Double),
 }
 
 // Is point p inside the triangle abc
+
 func inCircle(ax: (Double), ay: (Double),
               bx: (Double), by: (Double),
               cx: (Double), cy: (Double),
