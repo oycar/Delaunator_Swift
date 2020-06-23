@@ -43,7 +43,7 @@ struct ShowEdges: View {
             }
           }
         }
-        .stroke(Color.black)
+        .stroke(Color.pink)
       }
       .padding()
     }

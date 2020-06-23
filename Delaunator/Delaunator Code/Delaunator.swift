@@ -255,9 +255,7 @@ struct Delaunator_Swift {
     // radial and azimuthal sorts
     
     // Get the circumcentre of this triangle
-    centre = circumCentre(first:  Point(x:i0x, y:i0y),
-                          second: Point(x:i1x, y:i1y),
-                          third:  Point(x:i2x, y:i2y))
+    centre = circumCentre(i0x, i0y, i1x, i1y, i2x, i2y)
     
     // Get the radial distance of each point from th ecentre
     for i in 0..<numberPoints {
@@ -726,7 +724,7 @@ func inCircle(ax: (Double), ay: (Double),
   return result < -Static.Tolerance
 }
 
-
+// Get the cirvum-radius
 func circumRadius(_ ax: Double, _ ay: Double,
                   _ bx: Double, _ by: Double,
                   _ cx: Double, _ cy: Double) -> Double {
@@ -741,17 +739,29 @@ func circumRadius(_ ax: Double, _ ay: Double,
   let bl = dx * dx + dy * dy
   let cl = ex * ex + ey * ey
   let d = 0.5 / (dx * ey - dy * ex)
-  
-  let x = (ey * bl - dy * cl) * d
-  let y = (dx * cl - ex * bl) * d
-  //let r = x * x + y * y
-  
+ 
   // Is zero present in this list?
   if ([bl, cl, d].contains {is_near_zero(x: $0)} ) {
     return 0.0
   }
   
+  // Compute r squared
+  let x = (ey * bl - dy * cl) * d
+  let y = (dx * cl - ex * bl) * d
+  
   return x * x + y * y // r
+}
+
+// Get the centre of the circumcircle
+func circumCentre(_ ax: (Double), _ ay: (Double),
+                  _ bx: (Double), _ by: (Double),
+                  _ cx: (Double), _ cy: (Double)) -> Point {
+  let ad = ax * ax + ay * ay
+  let bd = bx * bx + by * by
+  let cd = cx * cx + cy * cy
+  let D = ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)
+  return Point(x: 0.5 / D * (ad * (by - cy) + bd * (cy - ay) + cd * (ay - by)),
+               y: 0.5 / D * (ad * (cx - bx) + bd * (ax - cx) + cd * (bx - ax)))
 }
 
 // monotonically increases with real angle, but doesn't need expensive trigonometry
@@ -866,7 +876,6 @@ func quicksortRandom<T: Comparable>(_ index: inout [Int], using a: [T], low: Int
   if low < high {
     // Create a random pivot index in the range [low...high].
     let pivotIndex = Int.random(in:low...high)
-
     
     // Because the Lomuto scheme expects a[high] to be the pivot entry, swap
     (index[pivotIndex], index[high]) = (index[high], index[pivotIndex])
@@ -903,21 +912,9 @@ func sum(x: [Double]) ->  Double {
   return sum + err
 }
 
-// This routine is not in a uniform style
-func circumCentre(first a:Point, second b:Point, third c:Point) -> Point {
-  let ad = a.x * a.x + a.y * a.y
-  let bd = b.x * b.x + b.y * b.y
-  let cd = c.x * c.x + c.y * c.y
-  let D = a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)
-  return Point(x: 0.5 / D * (ad * (b.y - c.y) + bd * (c.y - a.y) + cd * (a.y - b.y)),
-               y: 0.5 / D * (ad * (c.x - b.x) + bd * (a.x - c.x) + cd * (b.x - a.x)))
-}
-
-
 /* Some Simple helper functions */
 func nextHalfEdge(edge e:Int) -> Int { (e % 3 == 2) ? e - 2 : e + 1 }
 func prevHalfEdge(edge e:Int) -> Int { (e % 3 == 0) ? e + 2 : e - 1 }
-
 
 /* Triangle functions */
 func edgesOf(triangle t: Int) -> Array<Int> { [3 * t, 3 * t + 1, 3 * t + 2] }
@@ -926,7 +923,7 @@ func pointsOf(triangle t:Int, using triangles:Array<Int>) -> Array<Int> {edgesOf
 
 func triangleCentre(triangle t:Int, using points:Array<Point>, using triangles:Array<Int>) -> Point  {
   let vertices:Array<Point> = pointsOf(triangle: t, using: triangles).map({points[$0]})
-  return circumCentre(first:  vertices[0],
-                      second: vertices[1],
-                      third:  vertices[2])
+  return circumCentre(vertices[0].x, vertices[0].y,
+                      vertices[1].x, vertices[1].y,
+                      vertices[2].x, vertices[2].y)
 }
