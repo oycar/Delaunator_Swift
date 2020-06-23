@@ -505,7 +505,7 @@ struct Delaunator_Swift {
   
   
   mutating func legalize(edge e: Int) -> Int {
-    var stackCount = 0, ar = 0, a2 = 0
+    var stackCount = 0, a2 = 0
     var a = e
     
     // recursion eliminated with a fixed-size stack
@@ -515,34 +515,7 @@ struct Delaunator_Swift {
     flipEdge: while (true) {
       let b:Int = halfEdges[a]
       
-      /* if the pair of triangles doesn't satisfy the Delaunay condition
-       * (p1 is inside the circumCircle of [p0, pl, pr]), flip them,
-       * then do the same check/flip recursively for the new pair of triangles
-       *
-       *           pl                    pl
-       *          /||\                  /  \
-       *       al/ || \bl            al/    \a
-       *        /  ||  \              /      \
-       *       /  a||b  \    flip    /___ar___\
-       *     p0\   ||   /p1   =>   p0\---bl---/p1
-       *        \  ||  /              \      /
-       *       ar\ || /br             b\    /br
-       *          \||/                  \  /
-       *           pr                    pr
-       *
-       *
-       *    p0 -> p0 or q3    a  -> a     b  -> b
-       *    pr -> p1 or q2    al -> a1    bl -> b1
-       *    p1 -> p3 or q0    ar -> a2    br -> b2
-       *    pl -> p2 or q1
-       *
-       *    flip
-       *
-       *    triangles[al] -> p3 or q0
-       *    triangles[b1] -> p0 or q3
-       *    halfEdges[a]  -> halfEdges[b1]
-       *    halfEdges[b]  -> halfEdges[a1]
-       *    halfEdges[a1] <-> halfEdges[b1]
+      /* if the pair of triangles doesn't satisfy the Delaunay condition flip it
        *
        *    Input edge is a
        *
@@ -576,11 +549,8 @@ struct Delaunator_Swift {
 
       // No way to know which of the [0, 1, 2] edges of b were cut in the projection
       // so complex remainder trickery to get the edge ids
-      // Once flipped _al_ and _b_ are boundary edges - so no need to check delaunay status
-      // From symmetry surely both _a_ and _br_ should be labelled as non-delaunay?
-      
-      
-
+      // Once flipped _a1_ and _b_ are boundary edges - so no need to check delaunay status
+      // From symmetry surely both _a_ and _b1_ should be labelled as non-delaunay?
       
       // First case is if (a <-> b) is the convex hell edge
       // In this case no flip can occur
@@ -598,52 +568,37 @@ struct Delaunator_Swift {
       // Get the edges associated with each triangle
       // Triangle a
       let a0 = a - a % 3
-      let al = a0 + (a + 1) % 3
       let a1 = a0 + (a + 1) % 3
-      ar = a0 + (a + 2) % 3
       a2 = a0 + (a + 2) % 3
       
-      // Triangle b
+      // Triangle b - don't actually need b1 unless added to the stack
       let b0 = b - b % 3
-      let bl = b0 + (b + 2) % 3
       let b2 = b0 + (b + 2) % 3
 
       // Now the four points
-      let p0 = triangles[ar]
-      let pr = triangles[a]
-      let pl = triangles[al]
-      let p1 = triangles[bl]
-      let n = triangles[b]
+      let n = triangles[a1]
       let i = triangles[a2]
       let q = triangles[a]
       let p = triangles[b2]
 
-      
-      
       // We need to flip the edges a-b if the point p is inside the circum-circle
       // of the triangle [n, i, q]
       let illegal = inCircle(
-        ax: coords[2 * p0], ay: coords[2 * p0 + 1],
-        bx: coords[2 * pr], by: coords[2 * pr + 1],
-        cx: coords[2 * pl], cy: coords[2 * pl + 1],
-        px: coords[2 * p1], py: coords[2 * p1 + 1])
-//      let illegal = inCircle(
-//        ax: coords[2 * n], ay: coords[2 * n + 1],
-//        bx: coords[2 * i], by: coords[2 * i + 1],
-//        cx: coords[2 * q], cy: coords[2 * q + 1],
-//        px: coords[2 * p], py: coords[2 * p + 1])
+        ax: coords[2 * n], ay: coords[2 * n + 1],
+        bx: coords[2 * i], by: coords[2 * i + 1],
+        cx: coords[2 * q], cy: coords[2 * q + 1],
+        px: coords[2 * p], py: coords[2 * p + 1])
       
       // We have to flip this edge
       if (illegal) {
         triangles[a] = p
         triangles[b] = i
         
-        let hbl = halfEdges[bl]
-        let hb2 = halfEdges[b2]
-
         // edge swapped on the other side of the hull (rare); fix the halfEdge reference
         // Repairing the hull when a flip has disturbed it
-        // _b2_ is the only edge this can happen with - because _br_ is not swapped, and _ar_ and _al_ are on
+        // _b2_ is the only edge this can happen with - because _b1_ is not swapped,
+        // and _a1_ and _a2_ are on the hull already
+        let hb2 = halfEdges[b2]
         if (hb2 == -1) {
           var e = hullStart
           repairHull: repeat {
@@ -655,22 +610,22 @@ struct Delaunator_Swift {
           } while (e != hullStart)
         }
         
+        // Link the half edges
+        //   halfEdges[a]  <=> halfEdges[b2]
+        //   halfEdges[a2] <=> halfEdges[b2]
+        //   halfEdges[b]  <=> halfEdges[a2]
         link(a, hb2)
         link(b, halfEdges[a2])
         link(a2, b2)
-        
-        // let br = b0 + (b + 1) % 3
-        
+                
         // don't worry about hitting the cap: it can only happen on extremely degenerate input
         // Fixme
         if (stackCount < EDGE_STACK.count) {
-          EDGE_STACK[stackCount] = b0 + (b + 1) % 3 // br or b1
+          EDGE_STACK[stackCount] = b0 + (b + 1) % 3 // b1
           stackCount += 1
         }
       } else {
         // Get here when an edge (a) is locally delaunay
-        
-        
         if (stackCount == 0) {break flipEdge}
         stackCount -= 1
         a = EDGE_STACK[stackCount]
@@ -681,7 +636,7 @@ struct Delaunator_Swift {
     return a2
   }
   
-  // Get a hash key - need to do  lot of type casting
+  // Get a hash key - slightly simplified
   func hashKey(p:Point) -> Int {
     return Int(hashFactor * pseudoAngle(dx:p.x - centre.x, dy:p.y - centre.y).rounded(.down)) % hashSize
   }
@@ -734,9 +689,6 @@ struct Delaunator_Swift {
   }
   
 }
-
-
-
 
 /* Helper Functions
  dist:
@@ -951,6 +903,7 @@ func sum(x: [Double]) ->  Double {
   return sum + err
 }
 
+// This routine is not in a uniform style
 func circumCentre(first a:Point, second b:Point, third c:Point) -> Point {
   let ad = a.x * a.x + a.y * a.y
   let bd = b.x * b.x + b.y * b.y
