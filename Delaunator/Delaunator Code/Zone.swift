@@ -219,3 +219,125 @@ func readZones(using storedData:StoredZones) -> [Zone] {
   return outputZones
 }
 
+
+// Logging
+// Print out some simple summaries
+func logTriangulation(_ phrase: String,
+                      _ points: Array<Point>,
+                      _ t: Delaunator_Swift? = nil,
+                      _ array: Array<Int>?) -> Bool {
+  // Get delaunay triangulation
+  let d = t ?? Delaunator_Swift(from: points)
+  
+  // Log triangles and half edges
+  print (String(format: "Number Half Edges => %04d", d.numberEdges), to: &errorStream)
+  for (e, _) in d.halfEdges.enumerated()  {
+    d.logTriangles(e: e)
+  }
+  
+  print (String(format: "Number Points => %04d", points.count), to: &errorStream)
+  for (i, p) in points.enumerated() {
+    print (String(format: "Point[%4d] => [%7.2g, %7.2g]", i, p.x, p.y),
+           to: &errorStream)
+  }
+  return true
+}
+
+
+/**
+ Testing some simple functions
+ */
+
+
+// Check for a valid triangulation which conserves area and has a convex hull
+func testEqual(_ phrase: String,
+               _ points: Array<Point>,
+               _ t: Delaunator_Swift? = nil,
+               _ array: Array<Int>?) -> Bool {
+  let d = t ?? Delaunator_Swift(from: points)
+
+  if (d.hull != array ?? []) {
+    print("Incorrect hull", to:&errorStream)
+    return false
+  }
+    
+  // All ok if we got here
+  print(phrase, to:&errorStream)
+
+  return true
+}
+
+
+
+// Check for a valid triangulation which conserves area and has a convex hull
+func validateTriangulation(_ phrase: String,
+                           _ points: Array<Point>,
+                           _ t: Delaunator_Swift? = nil,
+                           _ array: Array<Int>? = nil) -> Bool {
+  let d = t ?? Delaunator_Swift(from: points)
+  
+  // validate halfedges
+  for (i, i2) in d.halfEdges.enumerated() {
+    if (i2 != -1 && d.halfEdges[i2] != i) {
+      print("Invalid halfEdge connexion", to:&errorStream)
+      print(String(format:"\thalfEdge[%04d] => %04d", i, i2), to:&errorStream)
+      print(String(format:"\thalfEdge[%04d] => %04d", i2, d.halfEdges[i2]), to:&errorStream)
+      
+      return false
+    }
+  }
+  print("halfEdges are valid", to: &errorStream)
+  
+  // validate triangulation
+  // This library enforces a convex hull
+  var hullAreas = [Double]()
+  var origin = Point(x:0, y:0)
+
+  
+  // Sum the areas
+  for (i, _) in d.hull.enumerated() {
+    // Three points j - 1, j, j + 1
+    let j = (i + 1) % d.hull.count
+    let k = (j + 2) % d.hull.count
+    let a = points[d.hull[i]]
+    let b = points[d.hull[j]]
+    let c = points[d.hull[k]]
+
+    if (i == 0) {
+      origin = a
+    }
+    hullAreas.append(orientIfSure(a.x, a.y, b.x, b.y, origin.x, origin.y))
+    
+    // Simplify this
+    let sense = orientIfSure(a.x, a.y, b.x, b.y, c.x, c.y)
+    if (sense < 0) {
+      print(String(format:"hull is concave at %d", j), to: &errorStream)
+      return false
+    }
+  }
+  let hullArea = sum(x:hullAreas)
+  
+  var triangleAreas = [Double]()
+  for i in stride(from:0, to:d.triangles.count, by:3) {
+    let a = points[d.triangles[i]]
+    let b = points[d.triangles[i + 1]]
+    let c = points[d.triangles[i + 2]]
+    
+    let area = orientIfSure(a.x, a.y, b.x, b.y, c.x, c.y)
+    
+    triangleAreas.append(area)
+  }
+  let trianglesArea = sum(x:triangleAreas)
+  
+  let err = abs((hullArea - trianglesArea) / hullArea)
+  if (err <= Static.Epsilon) {
+    print(String(format:"triangulation is valid => %f error", err), to:&errorStream)
+  } else {
+    print(String(format:"triangulation is invalid => %f error", err), to:&errorStream)
+    return false
+  }
+  
+  // All ok if we got here
+  print(phrase, to:&errorStream)
+  return true
+}

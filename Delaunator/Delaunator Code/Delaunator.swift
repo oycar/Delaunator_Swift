@@ -374,7 +374,7 @@ struct Delaunator_Swift {
 
       // Number of edges has increased by 3; t is the old number of triangles
       // Make the new triangle locally delaunany
-      hullTri[i] = legalize(check: t + 2)
+      hullTri[i] = legalize(edge: t + 2)
       hullTri[e] = t  // keep track of boundary triangles on the hull
       
       // We added one triangle - so the hull size goes up by one
@@ -413,7 +413,7 @@ struct Delaunator_Swift {
         
         // Fix locally non-delaunay edges
         // Returns hull edge i on return (the new edge)
-        hullTri[i] = legalize(check: t + 2)
+        hullTri[i] = legalize(edge: t + 2)
 
         // This indicates the edge n is no longer on the hull
         hullNext[n] = n // mark as removed
@@ -463,7 +463,7 @@ struct Delaunator_Swift {
           
           // Fix locally non-delaunay edges
           // Ignore return value (which is edge i - not on the hull)
-          let _ = legalize(check:t + 2)
+          let _ = legalize(edge:t + 2)
           
           // Add new hull edge q
           hullTri[q] = t
@@ -504,9 +504,9 @@ struct Delaunator_Swift {
   }
   
   
-  mutating func legalize(check edge: Int) -> Int {
-    var i = 0, ar = 0
-    var a = edge
+  mutating func legalize(edge e: Int) -> Int {
+    var stackCount = 0, ar = 0, a2 = 0
+    var a = e
     
     // recursion eliminated with a fixed-size stack
     // Maintains a stack of edges for flipping
@@ -544,11 +544,36 @@ struct Delaunator_Swift {
        *    halfEdges[b]  -> halfEdges[a1]
        *    halfEdges[a1] <-> halfEdges[b1]
        *
-       
+       *    Input edge is a
+       *
+       *
+       *            n                     n
+       *          /| |\                  /  \
+       *      a1 / | | \b2            a1/    \a
+       *        /  | |  \              /      \
+       *       /   | |   \    flip    /___a2___\
+       *      i   a| |b  p     =>    i__________p
+       *       \   | |   /            \   b2   /
+       *        \  | |  /              \      /
+       *       a2\ | | /b1             b\    /b1
+       *          \| |/                  \  /
+       *            q                     q
+       *
+       *
        */
       
-      
-      // New triangle is triangle [a]
+      // Old triangles are [a] triangle => [a, a1, a2] halfEdges => [q, n, i]
+      //               and [b] triangle => [b, b1, b2] halfEdges => [n, q, p]
+
+      // New triangles are [a] triangle => [a, a1, a2] halfEdges => [p, n, i]
+      //               and [b] triangle => [b, b1, b2] halfEdges => [i, q, p]
+      //
+      // So changes    are triangles[a]  => p
+      //                   triangles[b]  => i
+      //                   halfEdges[a]  <=> halfEdges[b2]
+      //                   halfEdges[a2] <=> halfEdges[b2]
+      //                   halfEdges[b]  <=> halfEdges[a2]
+
       // No way to know which of the [0, 1, 2] edges of b were cut in the projection
       // so complex remainder trickery to get the edge ids
       // Once flipped _al_ and _b_ are boundary edges - so no need to check delaunay status
@@ -562,46 +587,67 @@ struct Delaunator_Swift {
       if (b == -1) {
         
         // If no edges left on stack all edges are locally delaunay
-        if (i == 0) {break flipEdge}
+        if (stackCount == 0) {break flipEdge}
         
         // Get the next pending edge
-        i -= 1
-        a = EDGE_STACK[i]
+        stackCount -= 1
+        a = EDGE_STACK[stackCount]
         continue flipEdge
       }
       
-      // Get the
+      // Get the edges associated with each triangle
+      // Triangle a
       let a0 = a - a % 3
-      ar = a0 + (a + 2) % 3
-      
-      let b0 = b - b % 3
       let al = a0 + (a + 1) % 3
-      let bl = b0 + (b + 2) % 3
+      let a1 = a0 + (a + 1) % 3
+      ar = a0 + (a + 2) % 3
+      a2 = a0 + (a + 2) % 3
       
+      // Triangle b
+      let b0 = b - b % 3
+      let bl = b0 + (b + 2) % 3
+      let b2 = b0 + (b + 2) % 3
+
+      // Now the four points
       let p0 = triangles[ar]
       let pr = triangles[a]
       let pl = triangles[al]
       let p1 = triangles[bl]
+      let n = triangles[b]
+      let i = triangles[a2]
+      let q = triangles[a]
+      let p = triangles[b2]
+
       
+      
+      // We need to flip the edges a-b if the point p is inside the circum-circle
+      // of the triangle [n, i, q]
       let illegal = inCircle(
         ax: coords[2 * p0], ay: coords[2 * p0 + 1],
         bx: coords[2 * pr], by: coords[2 * pr + 1],
         cx: coords[2 * pl], cy: coords[2 * pl + 1],
         px: coords[2 * p1], py: coords[2 * p1 + 1])
+//      let illegal = inCircle(
+//        ax: coords[2 * n], ay: coords[2 * n + 1],
+//        bx: coords[2 * i], by: coords[2 * i + 1],
+//        cx: coords[2 * q], cy: coords[2 * q + 1],
+//        px: coords[2 * p], py: coords[2 * p + 1])
       
+      // We have to flip this edge
       if (illegal) {
-        triangles[a] = p1
-        triangles[b] = p0
+        triangles[a] = p
+        triangles[b] = i
         
         let hbl = halfEdges[bl]
-        
+        let hb2 = halfEdges[b2]
+
         // edge swapped on the other side of the hull (rare); fix the halfEdge reference
         // Repairing the hull when a flip has disturbed it
-        // _bl_ is the only edge this can happen with - because _br_ is not swapped, and _ar_ and _al_ are on
-        if (hbl == -1) {
+        // _b2_ is the only edge this can happen with - because _br_ is not swapped, and _ar_ and _al_ are on
+        if (hb2 == -1) {
           var e = hullStart
           repairHull: repeat {
-            if (hullTri[e] == bl) {
+            if (hullTri[e] == b2) {
               hullTri[e] = a
               break repairHull
             }
@@ -609,30 +655,30 @@ struct Delaunator_Swift {
           } while (e != hullStart)
         }
         
-        link(a, hbl)
-        link(b, halfEdges[ar])
-        link(ar, bl)
+        link(a, hb2)
+        link(b, halfEdges[a2])
+        link(a2, b2)
         
         // let br = b0 + (b + 1) % 3
         
         // don't worry about hitting the cap: it can only happen on extremely degenerate input
         // Fixme
-        if (i < EDGE_STACK.count) {
-          EDGE_STACK[i] = b0 + (b + 1) % 3 // br
-          i += 1
+        if (stackCount < EDGE_STACK.count) {
+          EDGE_STACK[stackCount] = b0 + (b + 1) % 3 // br or b1
+          stackCount += 1
         }
       } else {
         // Get here when an edge (a) is locally delaunay
         
         
-        if (i == 0) {break flipEdge}
-        i -= 1
-        a = EDGE_STACK[i]
+        if (stackCount == 0) {break flipEdge}
+        stackCount -= 1
+        a = EDGE_STACK[stackCount]
       }
     }
     
     // Only gets here when no flip - because stack is not empty after a flip
-    return ar
+    return a2
   }
   
   // Get a hash key - need to do  lot of type casting
@@ -690,104 +736,6 @@ struct Delaunator_Swift {
 }
 
 
-// Check for a valid triangulation which conserves area and has a convex hull
-func testEqual(_ phrase: String,
-               _ points: Array<Point>,
-               _ t: Delaunator_Swift? = nil,
-               _ array: Array<Int>?) -> Bool {
-  let d = t ?? Delaunator_Swift(from: points)
-  assert(d.triangles == [], "Incorrect Triangulation")
-  assert(d.hull == array ?? [], "Incorrect hull")
-  
-  // All ok if we got here
-  print(phrase, to:&errorStream)
-  
-  return true
-}
-
-// Print out some simple summaries
-func logTriangulation(_ phrase: String,
-                      _ points: Array<Point>,
-                      _ t: Delaunator_Swift? = nil,
-                      _ array: Array<Int>?) -> Bool {
-  // Get delaunay triangulation
-  let d = t ?? Delaunator_Swift(from: points)
-  
-  // Log triangles and half edges
-  print (String(format: "Number Half Edges => %04d", d.numberEdges), to: &errorStream)
-  for (e, _) in d.halfEdges.enumerated()  {
-    d.logTriangles(e: e)
-  }
-  
-  print (String(format: "Number Points => %04d", points.count), to: &errorStream)
-  for (i, p) in points.enumerated() {
-    print (String(format: "Point[%4d] => [%7.2g, %7.2g]", i, p.x, p.y),
-           to: &errorStream)
-  }
-  return true
-}
-
-// Check for a valid triangulation which conserves area and has a convex hull
-func validateTriangulation(_ phrase: String,
-                           _ points: Array<Point>,
-                           _ t: Delaunator_Swift? = nil,
-                           _ array: Array<Int>? = nil) -> Bool {
-  let d = t ?? Delaunator_Swift(from: points)
-  
-  // validate halfedges
-  for (i, i2) in d.halfEdges.enumerated() {
-    if (i2 != -1 && d.halfEdges[i2] != i) {
-      print("Invalid halfEdge connexion", to:&errorStream)
-      print(String(format:"\thalfEdge[%04d] => %04d", i, i2), to:&errorStream)
-      print(String(format:"\thalfEdge[%04d] => %04d", i2, d.halfEdges[i2]), to:&errorStream)
-      
-      return false
-    }
-  }
-  print("halfEdges are valid", to: &errorStream)
-  
-  // validate triangulation
-  // This library enforces a convex hull
-  var hullAreas = [Double]()
-  var j = d.hull.count - 1
-  for (i, pi) in d.hull.enumerated() {
-    let pj = d.hull[j]
-    hullAreas.append((points[pi].x - points[pj].x) * (points[pi].y + points[pj].y))
-    
-    // Surely i == j + 1 and why is it (j + 3) here and not (j +2)??
-    let c = orient(points[d.hull[j]].x,                      points[d.hull[j]].y,
-                   points[d.hull[(j + 1) % d.hull.count]].x, points[d.hull[(j + 1) % d.hull.count]].y,
-                   points[d.hull[(j + 3) % d.hull.count]].x, points[d.hull[(j + 3) % d.hull.count]].y)
-    if !c {
-      print(String(format:"hull is not convex at %d", j), to: &errorStream)
-      return false
-    }
-    j = i
-  }
-  let hullArea = sum(x:hullAreas)
-  
-  var triangleAreas = [Double]()
-  for i in stride(from:0, to:d.triangles.count, by:3) {
-    let a = points[d.triangles[i]]
-    let b = points[d.triangles[i + 1]]
-    let c = points[d.triangles[i + 2]]
-    let area = abs((b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y))
-    triangleAreas.append(area)
-  }
-  let trianglesArea = sum(x:triangleAreas)
-  
-  let err = abs((hullArea - trianglesArea) / hullArea)
-  if (err <= Static.Epsilon) {
-    print(String(format:"triangulation is valid => %f error", err), to:&errorStream)
-  } else {
-    print(String(format:"triangulation is invalid => %f error", err), to:&errorStream)
-    return false
-  }
-  
-  // All ok if we got here
-  print(phrase, to:&errorStream)
-  return true
-}
 
 
 /* Helper Functions
@@ -862,8 +810,9 @@ func pseudoAngle(dx: Double, dy: Double) -> Double {
 
 // return 2d orientation sign if we're confident in it through J. Shewchuk's error bound check
 //
-// Is a point p to the left or right of a vector r->q
-// Or more symmetrically are the points (r->q->p) in an anti-clockwise order? +ve yes -ve no
+// Is a point c to the left or right of a vector a->b
+// Or more symmetrically are the points (a->b->c) in an anti-clockwise order? +ve yes -ve no
+// The magnitude of this quantity is twice the triangle area
 //
 /**
  [Robust Predicates](http://www.cs.cmu.edu/~quake/robust.html)
@@ -914,6 +863,11 @@ func orient(_ ax: (Double), _ ay: (Double),
   // Final case
   return (sense > 0)
 }
+
+// Get the area of a triangle [a, b, c]
+func getTriangleArea(_ ax: (Double), _ ay: (Double),
+                     _ bx: (Double), _ by: (Double),
+                     _ cx: (Double), _ cy: (Double)) -> Double { 0.5 * orientIfSure(ax, ay, bx, by, cx, cy) }
 
 
 /*
