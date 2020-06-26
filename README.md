@@ -116,4 +116,5 @@ An `[Int]` array of indices that reference points on the convex hull of the inpu
 
 Comprehensive details on the data structures used are available via [mapbox](https://mapbox.github.io/delaunator/)
 
+Some implementation details are avialable
 ![Extensive annotation](./Images/Annotation.png)  in the `Delaunator.Swift` file.
