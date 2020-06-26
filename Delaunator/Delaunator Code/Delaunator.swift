@@ -9,9 +9,12 @@ import Foundation
 
 // Define statics
 struct Static {
-  static var Epsilon:Double = pow(2.0, -52)
-  static var Tolerance:Double = 1.0e-12 // Arbitrary number
-  static let Threshold:Double = 3.3306690738754716e-16
+  static var Epsilon:Double = pow(2.0, -53)
+
+  // Shewchuk error bounds
+  static let orientThreshold:Double =  (3.0 + 16.0 * Epsilon) * Epsilon
+  static let circleThreshold:Double = (10.0 + 96.0 * Epsilon) * Epsilon
+
 }
 
 // Write to the error stream
@@ -23,15 +26,12 @@ final class StandardErrorOutputStream: TextOutputStream {
 var errorStream = StandardErrorOutputStream()
 
 // Start with some global constants
-//var EDGE_STACK  = Array(repeating:0, count:512)
 var Edge_Stack:Array<Int> = []
-
 
 // Define a simple point struct
 struct Point: Hashable, Codable {
   var x, y: Double
 }
-
 
 // For recording
 struct Triangulation: Hashable, Codable, Identifiable {
@@ -98,10 +98,10 @@ struct Delaunator_Swift {
   var numberEdges: Int
   fileprivate var numberPoints, maxTriangles,  hashSize, hullStart, hullSize: Int
   fileprivate var hashFactor: Double
-  fileprivate  var hullTri: Array<Int>
+  fileprivate var hullTri: Array<Int>
   fileprivate var hullPrev: Array<Int>
   fileprivate var centre: Point
-  fileprivate  var coords = [Double]()
+  fileprivate var coords = [Double]()
   
   // Use a provided init
   init(from points: Array<Point>) {
@@ -124,7 +124,6 @@ struct Delaunator_Swift {
     hashFactor = Double(numberPoints).squareRoot().rounded(.up)
     hashSize = Int(hashFactor)
     hashFactor *= 0.25
-    
     
     hullStart = 0
     hullSize = 0
@@ -181,7 +180,6 @@ struct Delaunator_Swift {
     }
     let i0x = coords[2 * i0]
     let i0y = coords[2 * i0 + 1]
-    
     
     // find the point closest to the seed
     minDist = Double.infinity
@@ -294,18 +292,15 @@ struct Delaunator_Swift {
     
     // Now start building the triangulation
     // The previous point
-    var xp = 0.0, yp = 0.0
-    
+    var xp:Double = 0, yp:Double = 0
+
     // Labels! Just like good old FORTRAN IV
     projectPoints: for (k, i) in ids.enumerated() {
-      //for k in 0..<ids.count {
-      //let i = ids[k]
       let x = coords[2 * i]
       let y = coords[2 * i + 1]
       
       // skip near-duplicate points
       if (k > 0 && is_near_zero(x:x-xp) && is_near_zero(x:y-yp)) {continue projectPoints}
-      // if (k > 0 && dist(ax: x,  ay: y, bx: xp, by: yp) < Static.shortestEdgeSquared) {continue}
       
       // Save previous point
       xp = x
@@ -341,7 +336,6 @@ struct Delaunator_Swift {
       
       // Check for positive (anti-clockwise) orientation of the triangle [i, q, e] where the projected point is i
       // So if [i, q, e] is clockwise this test fails and the triangle is replaced in the loop
-      // So
       while (!orient(x, y,
                      coords[2 * q], coords[2 * q + 1],
                      coords[2 * e], coords[2 * e + 1])) {
@@ -503,7 +497,7 @@ struct Delaunator_Swift {
   }
   
   
-  mutating func legalize(edge e: Int) -> Int {
+  private mutating func legalize(edge e: Int) -> Int {
     var a  = e,
         a2 = 0
     
@@ -512,6 +506,9 @@ struct Delaunator_Swift {
     // If an edge needs flipping adds it to the stack - retains edge
     
     flipEdge: while (true) {
+      // A subtlety here is that if an edge [a] is flipped
+      // then no new edge is popped from the stack so the edge [a] (the old [b2])
+      // is tested again - so in fact two edges ([a] and [b1]) are checked
       let b:Int = halfEdges[a]
       
       /* if the pair of triangles doesn't satisfy the Delaunay condition flip it
@@ -548,30 +545,26 @@ struct Delaunator_Swift {
 
       // No way to know which of the [0, 1, 2] edges of b were cut in the projection
       // so complex remainder trickery to get the edge ids
-      // Once flipped _a1_ and _b_ are boundary edges - so no need to check delaunay status
-      // From symmetry surely both _a_ and _b1_ should be labelled as non-delaunay?
+      
+      // Get the edges associated with each triangle
+      // Triangle a - need a2 for special case
+      let a0 = a - a % 3
+      a2 = a0 + (a + 2) % 3
       
       // First case is if (a <-> b) is the convex hell edge
       // In this case no flip can occur
       if (b == -1) {
-        
         // If no edges left on stack all edges are locally delaunay
-        
         // Get the next pending edge
         a = Edge_Stack.popLast() ?? -1
-
+        
         // All done if this is negative
         if (a == -1) {break flipEdge}
         continue flipEdge
       }
       
-      // Get the edges associated with each triangle
-      // Triangle a
-      let a0 = a - a % 3
+      // Finish Triangle a & Triangle b - don't actually need b1 unless added to the stack
       let a1 = a0 + (a + 1) % 3
-      a2 = a0 + (a + 2) % 3
-      
-      // Triangle b - don't actually need b1 unless added to the stack
       let b0 = b - b % 3
       let b2 = b0 + (b + 2) % 3
 
@@ -583,7 +576,9 @@ struct Delaunator_Swift {
 
       // We need to flip the edges a-b if the point p is inside the circum-circle
       // of the triangle [n, i, q]
-      let illegal = inCircle(
+
+      // Use Shewchuk's robust version of inCircumCircle
+      let illegal = inCircumCircle(
         ax: coords[2 * n], ay: coords[2 * n + 1],
         bx: coords[2 * i], by: coords[2 * i + 1],
         cx: coords[2 * q], cy: coords[2 * q + 1],
@@ -600,14 +595,9 @@ struct Delaunator_Swift {
         // and _a1_ and _a2_ are on the hull already
         let hb2 = halfEdges[b2]
         if (hb2 == -1) {
-          var e = hullStart
-          repairHull: repeat {
-            if (hullTri[e] == b2) {
-              hullTri[e] = a
-              break repairHull
-            }
-            e = hullPrev[e]
-          } while (e != hullStart)
+          // Repair the hull
+          // Simply patch in the edge a at point p
+          hullTri[p] = a
         }
         
         // Link the half edges
@@ -618,7 +608,10 @@ struct Delaunator_Swift {
         link(b, halfEdges[a2])
         link(a2, b2)
                 
-        // Add an edge to the stack
+        // Add the edge [b1] to the stack
+        // The edge [a] is not popped so will be tested again
+        // What about [a1] and [b] ? If they are on the hull
+        // this is ok - but after some flips is this still true?
         Edge_Stack.append(b0 + (b + 1) % 3) // b1
       } else {
         // Get here when an edge (a) is locally delaunay
@@ -634,12 +627,12 @@ struct Delaunator_Swift {
   }
   
   // Get a hash key - slightly simplified
-  func hashKey(p:Point) -> Int {
+  private func hashKey(p:Point) -> Int {
     return Int(hashFactor * pseudoAngle(dx:p.x - centre.x, dy:p.y - centre.y).rounded(.down)) % hashSize
   }
   
   
-  mutating func link(_ a: Int, _ b: Int) {
+  private mutating func link(_ a: Int, _ b: Int) {
     halfEdges[a] = b
     //logTriangles(e: a)
     
@@ -651,7 +644,7 @@ struct Delaunator_Swift {
   }
   
   // add a new triangle given vertex indices and adjacent half-edge ids
-  mutating func addTriangle(_ i0: Int, _ i1: Int, _ i2: Int,
+  private mutating func addTriangle(_ i0: Int, _ i1: Int, _ i2: Int,
                             _  a: Int, _  b: Int, _  c: Int) -> Int {
     
     // Save the value of numberEdges
@@ -685,11 +678,78 @@ struct Delaunator_Swift {
                   e, halfEdges[e], e, t, coords[2*t], coords[2*t+1]), to: &errorStream)
   }
   
+  
+  // check if an edge is locally Delaunay
+  func isDelaunay(edge a:Int) -> Bool {
+    // The opposing halfEdge
+    let b:Int = halfEdges[a]
+    
+    // If this is on the convex hull it is locally Delaunay
+    // Also only consider internal edges for which a > b
+    // (to prevent testing the same four four points twice)
+    if (a > b) {
+      // This will always be true when e is on the hull since b == -1
+      return true
+    }
+    
+    // Get the edges associated with each triangle
+    // Triangle a
+    let a0 = a - a % 3
+    let a1 = a0 + (a + 1) % 3
+    let a2 = a0 + (a + 2) % 3
+    
+    // Triangle b
+    let b0 = b - b % 3
+    let b2 = b0 + (b + 2) % 3
+
+    /* if the pair of triangles doesn't satisfy the Delaunay condition return false
+     *
+     *    Input edge is a
+     *
+     *            n
+     *          /| |\
+     *      a1 / | | \b2
+     *        /  | |  \
+     *       /   | |   \
+     *      i   a| |b   p
+     *       \   | |   /
+     *        \  | |  /
+     *       a2\ | | /b1
+     *          \| |/
+     *            q
+     *
+     */
+    
+    // Now need the four points making up the quadrilateral
+    // Now the four points
+    let n = triangles[a1]
+    let i = triangles[a2]
+    let q = triangles[a]
+    let p = triangles[b2]
+    
+    // two possible tests - rounding error can cause an endless cycle of flips
+    // This is overkill it seems
+    let firstTest = inCircumCircle(
+      ax: coords[2 * n], ay: coords[2 * n + 1],
+      bx: coords[2 * i], by: coords[2 * i + 1],
+      cx: coords[2 * q], cy: coords[2 * q + 1],
+      px: coords[2 * p], py: coords[2 * p + 1])
+    let otherTest = inCircumCircle(
+      ax: coords[2 * p], ay: coords[2 * p + 1],
+      bx: coords[2 * n], by: coords[2 * n + 1],
+      cx: coords[2 * i], cy: coords[2 * i + 1],
+      px: coords[2 * q], py: coords[2 * q + 1])
+    
+    // If tests agree - don't flip otherwise use first
+    // because the points are essentially on the circumcircle
+    // and therefore no real difference in which edge is used
+    return otherTest == firstTest ? true : !firstTest
+  }
 }
 
 /* Helper Functions
  dist:
- inCircle:
+ inCircumCircle:
  circumCentre:
  circumRadius:
  
@@ -702,29 +762,42 @@ func dist(ax: (Double), ay: (Double),
 }
 
 // Is point p inside the triangle abc
-
-func inCircle(ax: (Double), ay: (Double),
+// Documentation - Shewchuk
+func inCircumCircle(ax: (Double), ay: (Double),
               bx: (Double), by: (Double),
               cx: (Double), cy: (Double),
               px: (Double), py: (Double)) -> Bool {
-  let dx = ax - px
-  let dy = ay - py
-  let ex = bx - px
-  let ey = by - py
-  let fx = cx - px
-  let fy = cy - py
+  let adx = ax - px
+  let ady = ay - py
+  let bdx = bx - px
+  let bdy = by - py
+  let cdx = cx - px
+  let cdy = cy - py
   
-  let ap = dx * dx + dy * dy
-  let bp = ex * ex + ey * ey
-  let cp = fx * fx + fy * fy
+  let bdxcdy = bdx * cdy;
+  let cdxbdy = cdx * bdy;
+  let alift = adx * adx + ady * ady;
   
-  let result = dx * (ey * cp - bp * fy) -
-    dy * (ex * cp - bp * fx) +
-    ap * (ex * fy - ey * fx)
-  return result < -Static.Tolerance
+  let cdxady = cdx * ady;
+  let adxcdy = adx * cdy;
+  let blift = bdx * bdx + bdy * bdy;
+  
+  let adxbdy = adx * bdy;
+  let bdxady = bdx * ady;
+  let clift = cdx * cdx + cdy * cdy;
+  
+  let det = alift * (bdxcdy - cdxbdy)
+    + blift * (cdxady - adxcdy)
+    + clift * (adxbdy - bdxady);
+  
+  let permanent = (abs(bdxcdy) + abs(cdxbdy)) * alift
+    + (abs(cdxady) + abs(adxcdy)) * blift
+    + (abs(adxbdy) + abs(bdxady)) * clift;
+  let errbound = Static.circleThreshold * permanent
+  return  det < -errbound
 }
 
-// Get the cirvum-radius
+// Get the circum-radius
 func circumRadius(_ ax: Double, _ ay: Double,
                   _ bx: Double, _ by: Double,
                   _ cx: Double, _ cy: Double) -> Double {
@@ -795,7 +868,7 @@ func orientIfSure(_ ax: (Double), _ ay: (Double),
   // Zero     - colinear
   // Negative - clockwise
   let det = detLeft - detRight
-  return abs(det) >= Static.Threshold * abs(detLeft + detRight) ? det : 0
+  return abs(det) >= Static.orientThreshold * abs(detLeft + detRight) ? det : 0
 }
 
 // a more robust orientation test that's stable in a given triangle (to fix robustness issues)
@@ -888,13 +961,13 @@ func quicksortRandom<T: Comparable>(_ index: inout [Int], using a: [T], low: Int
 
 // Near zero
 func is_near_zero(x: Double) -> Bool {
-  return (x <= Static.Tolerance) && (x >= -Static.Tolerance)
+  return (x <= Static.Epsilon) && (x >= -Static.Epsilon)
 }
 
 // Nearly equal
 func is_near(x: Double, y: Double) -> Bool {
   let z = x - y
-  return (z <= Static.Tolerance) && (z >= -Static.Tolerance)
+  return (z <= Static.Epsilon) && (z >= -Static.Epsilon)
 }
 // Kahan and Babuska summation, Neumaier variant; accumulates less FP error
 func sum(x: [Double]) ->  Double {

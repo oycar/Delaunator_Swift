@@ -70,7 +70,6 @@ struct Zone: Hashable, Codable, Identifiable {
   
   // Variables which can be loaded from a header block
   var action:String? = "testValid"
-  var tolerance:Double? = Static.Tolerance
   var comment:String?
   var hull: Array<Int>?
   var scale:Double? = 1
@@ -100,7 +99,6 @@ struct StoredZones : Codable {
   struct Header: Hashable, Codable {
     // Extra stuff
     var action:String?
-    var tolerance:Double? = Static.Tolerance
     var comment:String?
     var hull: Array<Int>?
     var scale:Double?
@@ -119,7 +117,6 @@ extension Zone {
     action = stored.header?.action
     hull = stored.header?.hull
     scale = stored.header?.scale
-    tolerance = stored.header?.tolerance
   }
 }
 
@@ -165,10 +162,7 @@ func readZones(using storedData:StoredZones) -> [Zone] {
         default:
           testIt = logTriangulation
       }
-      
-      // Tolerance
-      Static.Tolerance = z.tolerance ?? Static.Tolerance
-      
+            
       // populate an array of point indices; calculate input data bbox
       var minX =  Double.infinity
       var maxX = -Double.infinity
@@ -180,8 +174,7 @@ func readZones(using storedData:StoredZones) -> [Zone] {
         let p = Point(x:scale * point[X],
                       y:scale * point[Y])
         
-        // Condition is not used ATM
-        //condition = point[C]
+        // Add each point
         list.append(p)
         
         // Compute bounds
@@ -282,7 +275,9 @@ func validateTriangulation(_ phrase: String,
       print("Invalid halfEdge connexion", to:&errorStream)
       print(String(format:"\thalfEdge[%04d] => %04d", i, i2), to:&errorStream)
       print(String(format:"\thalfEdge[%04d] => %04d", i2, d.halfEdges[i2]), to:&errorStream)
-      
+      if !d.isDelaunay(edge: i) {
+        print(String(format:"\thalfEdge %04d is Not Delaunay", i), to:&errorStream)
+      }
       return false
     }
   }
@@ -330,7 +325,7 @@ func validateTriangulation(_ phrase: String,
   let trianglesArea = sum(x:triangleAreas)
   
   let err = abs((hullArea - trianglesArea) / hullArea)
-  if (err <= Static.Epsilon) {
+  if (err <= Static.orientThreshold) {
     print(String(format:"triangulation is valid => %f error", err), to:&errorStream)
   } else {
     print(String(format:"triangulation is invalid => %f error", err), to:&errorStream)
