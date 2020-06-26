@@ -5,7 +5,6 @@ A port of the [Delaunator](https://github.com/mapbox/delaunator) javascript libr
 with detailed annotation of the core algorithm. Small improvements include a better inCircumCircle error bound (from [Shewchuk's Robust Predicates](http://www.cs.cmu.edu/~quake/robust.html) )
 and small fixes to patching the convex hull.
 
-
 This library produces Delaunay triangulations (or the dual Voronoi Mesh) for a set of points defined in an input JSON file; included is a bare bones SwiftUI renderer which will show these structures.
 
 ![Example Delaunay Triangulation](./Images/Ukraine_Delaunay.png)
@@ -116,3 +115,5 @@ An `[Int]` array of indices that reference points on the convex hull of the inpu
 ## More details
 
 Comprehensive details on the data structures used are available via [mapbox](https://mapbox.github.io/delaunator/)
+
+![Extensive annotation](./Images/Annotation.png)  in the `Delaunator.Swift` file.
